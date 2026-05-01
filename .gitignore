@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+node_modules/
+.tmp-tests/
+build/
+dist/
+*.egg-info/
+# supercodex runtime state
+.supercodex/
+.external
