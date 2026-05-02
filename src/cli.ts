@@ -176,6 +176,7 @@ async function cmdRun(args: ParsedArgs): Promise<number> {
     goal: stringFlag(args, "goal", ""),
     maxCycles: explicitMaxCycles ?? (dryRun ? 1 : Number.POSITIVE_INFINITY),
     maxRetries: numberFlag(args, "max-retries", 3),
+    remoteCompactionMaxRetries: numberFlag(args, "remote-compaction-max-retries", 20),
     sameSessionRetryLimit: numberFlag(args, "same-session-retry-limit", 2),
     retryBaseSeconds: numberFlag(args, "retry-base-seconds", 5),
     retryMaxSeconds: numberFlag(args, "retry-max-seconds", 60),
@@ -449,6 +450,8 @@ Common:
   --timeout-seconds <n>
   --idle-timeout-seconds <n>  Optional no-event timeout; disabled by default
   --max-retries <n>           Retry threshold before recoverable failures escalate to a fresh thread
+  --remote-compaction-max-retries <n>
+                              Same-thread remote pre-sampling compaction failures before fresh thread; default 20
   --same-session-retry-limit <n>
                               Same-thread failure threshold before starting a fresh thread
   --codex-bin <path-or-name>

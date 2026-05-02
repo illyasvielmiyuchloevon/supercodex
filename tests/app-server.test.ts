@@ -19,7 +19,7 @@ test("classifyAppServerFailure recognizes remote pre-sampling compaction failure
     "codex_core::session::turn: Failed to run pre-sampling compact",
   ].join("\n");
 
-  assert.equal(classifyAppServerFailure({ error: { message: text, codexErrorInfo: "other" } }), "context_compaction_failed");
+  assert.equal(classifyAppServerFailure({ error: { message: text, codexErrorInfo: "other" } }), "remote_compaction_failed");
 });
 
 test("classifyAppServerFailure keeps text fallbacks for session and usage failures", () => {

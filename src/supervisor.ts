@@ -27,6 +27,7 @@ export interface SupervisorConfig {
   goal: string;
   maxCycles: number;
   maxRetries: number;
+  remoteCompactionMaxRetries: number;
   sameSessionRetryLimit: number;
   retryBaseSeconds: number;
   retryMaxSeconds: number;
@@ -57,6 +58,7 @@ export function defaultSupervisorConfig(project: string): SupervisorConfig {
     goal: "",
     maxCycles: Number.POSITIVE_INFINITY,
     maxRetries: 3,
+    remoteCompactionMaxRetries: 20,
     sameSessionRetryLimit: 2,
     retryBaseSeconds: 5,
     retryMaxSeconds: 60,
@@ -132,6 +134,7 @@ export class Supervisor {
 
     let previousResult: CodexRunResult | null = null;
     let consecutiveFailures = 0;
+    let consecutiveRemoteCompactionFailures = 0;
     let sameSessionFailures = 0;
     let consecutiveAuthFailures = 0;
     let pendingOperatorMessage: string | null = null;
@@ -226,6 +229,7 @@ export class Supervisor {
         const interruptMessage = result.operatorMessage ?? currentOperatorMessage;
         previousResult = result;
         consecutiveFailures = 0;
+        consecutiveRemoteCompactionFailures = 0;
         sameSessionFailures = 0;
         consecutiveAuthFailures = 0;
         if (!interruptMessage?.trim()) {
@@ -242,6 +246,7 @@ export class Supervisor {
       if (isRunOk(result)) {
         previousResult = null;
         consecutiveFailures = 0;
+        consecutiveRemoteCompactionFailures = 0;
         sameSessionFailures = 0;
         consecutiveAuthFailures = 0;
         await checkpoint(project, work, command, "None recorded by SuperCodex.", `SuperCodex cycle ${cycle} completed successfully.`, "Reload state and select the next unfinished task or gate.");
@@ -249,6 +254,40 @@ export class Supervisor {
       }
 
       previousResult = result;
+      if (result.classification === "remote_compaction_failed") {
+        consecutiveRemoteCompactionFailures++;
+        consecutiveFailures = 0;
+        sameSessionFailures = 0;
+        consecutiveAuthFailures = 0;
+        await checkpoint(
+          project,
+          work,
+          command,
+          result.classification,
+          `Supervisor cycle ${cycle} hit remote pre-sampling compaction failure ${consecutiveRemoteCompactionFailures}/${remoteCompactionRetryLimit(this.config)}.`,
+          "Retry the same Codex thread until the remote compaction retry threshold is exceeded; then continue with a fresh Codex thread in the same SuperCodex run.",
+        );
+        const delay = Math.min(this.config.retryMaxSeconds, this.config.retryBaseSeconds * 2 ** Math.max(0, consecutiveRemoteCompactionFailures - 1));
+        if (consecutiveRemoteCompactionFailures >= remoteCompactionRetryLimit(this.config)) {
+          await patchSupervisorSettings(project, { forceFreshNext: true }, runId);
+          await recordProgress(
+            project,
+            "remote-compaction-escalate",
+            `Remote pre-sampling compaction failed ${consecutiveRemoteCompactionFailures}/${remoteCompactionRetryLimit(this.config)} times. SuperCodex will keep run '${runId}' and continue with a fresh Codex thread after ${delay.toFixed(1)}s.`,
+          );
+          consecutiveRemoteCompactionFailures = 0;
+          await this.sleeper(delay);
+          continue;
+        }
+        await recordProgress(
+          project,
+          "remote-compaction-retry",
+          `Remote pre-sampling compaction failed ${consecutiveRemoteCompactionFailures}/${remoteCompactionRetryLimit(this.config)}; retrying the same Codex thread after ${delay.toFixed(1)}s.`,
+        );
+        await this.sleeper(delay);
+        continue;
+      }
+      consecutiveRemoteCompactionFailures = 0;
       consecutiveFailures++;
       if (!isAuthFailureClassification(result.classification)) {
         consecutiveAuthFailures = 0;
@@ -439,7 +478,7 @@ export function resumableThreadId(sessionState: Record<string, unknown>): string
   const classification = typeof sessionState.lastClassification === "string" ? sessionState.lastClassification : null;
   if (
     classification &&
-    !new Set(["success", "context_compaction_failed", "context_window_exceeded", "network_transient", "operator_interrupt", "timeout", "usage_limit", "unauthorized"]).has(classification)
+    !new Set(["success", "context_compaction_failed", "context_window_exceeded", "network_transient", "operator_interrupt", "remote_compaction_failed", "timeout", "usage_limit", "unauthorized"]).has(classification)
   ) {
     return null;
   }
@@ -461,6 +500,10 @@ export function shouldResumeStoredThread(sessionState: Record<string, unknown>, 
 
 function isAuthFailureClassification(classification: string): classification is "usage_limit" | "unauthorized" {
   return classification === "usage_limit" || classification === "unauthorized";
+}
+
+function remoteCompactionRetryLimit(config: SupervisorConfig): number {
+  return Math.max(1, Math.floor(config.remoteCompactionMaxRetries));
 }
 
 async function checkpoint(project: string, work: WorkItem, command: string, risk: string, completed: string, nextStep: string): Promise<void> {

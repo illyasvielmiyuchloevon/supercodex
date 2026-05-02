@@ -12,6 +12,7 @@ test("resumableThreadId rejects dry-run and non-recoverable sessions", () => {
   assert.equal(resumableThreadId({ dryRun: true, thread_id: "thr_1" }), null);
   assert.equal(resumableThreadId({ lastClassification: "failed", thread_id: "thr_1" }), null);
   assert.equal(resumableThreadId({ lastClassification: "network_transient", thread_id: "thr_1" }), "thr_1");
+  assert.equal(resumableThreadId({ lastClassification: "remote_compaction_failed", thread_id: "thr_1" }), "thr_1");
   assert.equal(resumableThreadId({ lastClassification: "success", thread_id: "thr_1" }), "thr_1");
 });
 
@@ -174,6 +175,32 @@ test("recoverable failures reaching retry threshold force fresh thread and keep 
     { threadId: "thr_compaction", resume: true },
     { threadId: null, resume: false },
   ]);
+});
+
+test("remote pre-sampling compaction retries same Codex thread twenty times before fresh thread", async () => {
+  const project = await mkdtemp(join(tmpdir(), "supercodex-remote-compaction-retry-"));
+  await writeProjectState(project);
+  const calls: Array<{ threadId?: string | null; resume?: boolean }> = [];
+  const runner: Runner = {
+    async run(input) {
+      calls.push({ threadId: input.threadId, resume: input.resume });
+      if (calls.length <= 20) {
+        return failedResult("thr_remote_compaction", "remote_compaction_failed");
+      }
+      return result("thr_fresh_after_remote_compaction");
+    },
+  };
+  const config = { ...defaultSupervisorConfig(project), maxCycles: 21, maxRetries: 3, sameSessionRetryLimit: 2, retryBaseSeconds: 0, retryMaxSeconds: 0 };
+
+  const code = await new Supervisor(config, runner, async () => undefined).run();
+
+  assert.equal(code, 0);
+  assert.equal(calls.length, 21);
+  assert.deepEqual(calls[0], { threadId: null, resume: false });
+  for (const call of calls.slice(1, 20)) {
+    assert.deepEqual(call, { threadId: "thr_remote_compaction", resume: true });
+  }
+  assert.deepEqual(calls[20], { threadId: null, resume: false });
 });
 
 test("operator message on a done project runs as supervised intervention without reopening final gate", async () => {

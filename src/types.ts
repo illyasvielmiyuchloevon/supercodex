@@ -62,6 +62,7 @@ export function isRecoverableClassification(classification: string): boolean {
     "context_compaction_failed",
     "context_window_exceeded",
     "network_transient",
+    "remote_compaction_failed",
     "session_not_found",
     "startup_no_output_timeout",
     "timeout",
