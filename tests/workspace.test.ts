@@ -18,6 +18,18 @@ test("ensureScaffold preserves existing PRD and PLAN while adding gitignore rule
   assert.match(await readFile(join(project, ".gitignore"), "utf8"), /^\.supercodex\/$/m);
 });
 
+test("ensureScaffold includes final goal and objective audit artifacts", async () => {
+  const project = await mkdtemp(join(tmpdir(), "supercodex-final-artifacts-"));
+
+  await ensureScaffold(project, "goal");
+
+  assert.match(await readFile(join(project, ".supercodex", "docs", "FINAL_GOAL_LEDGER.md"), "utf8"), /FINAL GOAL LEDGER|FINAL_GOAL_LEDGER|Final Goal Ledger/i);
+  assert.match(await readFile(join(project, ".supercodex", "docs", "FINAL_OBJECTIVE_AUDIT.md"), "utf8"), /FINAL OBJECTIVE AUDIT|FINAL_OBJECTIVE_AUDIT|Final Objective Audit/i);
+  const state = JSON.parse(await readFile(join(project, ".supercodex", "state.json"), "utf8")) as { version?: number; finalObjectiveAuditStatus?: string };
+  assert.equal(state.version, 2);
+  assert.equal(state.finalObjectiveAuditStatus, "not_started");
+});
+
 test("ensureScaffold creates project AGENTS.md once and preserves existing project guidance", async () => {
   const project = await mkdtemp(join(tmpdir(), "supercodex-agents-"));
 
@@ -72,4 +84,31 @@ test("parsePlanTasks and chooseNextWork recover unchecked PLAN tasks", async () 
   assert.equal(work.kind, "task");
   assert.equal(work.taskId, "S7-T2");
   assert.equal(work.stageId, "stage-7");
+});
+
+test("chooseNextWork does not stop on done=true without passed Final Objective Audit", () => {
+  const base = {
+    project: ".",
+    backlog: {},
+    missingDocs: [],
+    planTasks: [],
+    supervisorSession: {},
+    done: true,
+    executionLocked: true,
+  };
+
+  const auditRequired = chooseNextWork({
+    ...base,
+    state: { done: true, finalObjectiveAuditStatus: "not_started" },
+    docsPresent: { "FINAL_GOAL_LEDGER.md": true, "FINAL_OBJECTIVE_AUDIT.md": true },
+  });
+  assert.equal(auditRequired.kind, "stage_gate");
+  assert.equal(auditRequired.source, "objective-audit");
+
+  const complete = chooseNextWork({
+    ...base,
+    state: { done: true, finalObjectiveAuditStatus: "passed" },
+    docsPresent: { "FINAL_GOAL_LEDGER.md": true, "FINAL_OBJECTIVE_AUDIT.md": true },
+  });
+  assert.equal(complete.kind, "done");
 });

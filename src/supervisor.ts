@@ -494,7 +494,7 @@ function shouldPrioritizeOperatorIntervention(work: WorkItem): boolean {
   if (work.kind === "done") {
     return true;
   }
-  return work.kind === "stage_gate" && !work.stageId && !work.taskId && work.source === "plan";
+  return work.kind === "stage_gate" && !work.stageId && !work.taskId && (work.source === "plan" || work.source === "objective-audit");
 }
 
 function operatorInterventionWork(previousWork: WorkItem): WorkItem {

@@ -16,11 +16,13 @@ import {
 
 export const requiredDocs = [
   "REQUIREMENTS.md",
+  "FINAL_GOAL_LEDGER.md",
   "PRD.md",
   "ARCHITECTURE.md",
   "PLAN.md",
   "ACCEPTANCE_MATRIX.md",
   "GAP_REPORT.md",
+  "FINAL_OBJECTIVE_AUDIT.md",
   "QA_REPORT.md",
   "REVIEW_REPORT.md",
   "DELIVERY_REPORT.md",
@@ -46,17 +48,36 @@ const agentDirs = [
 const supercodexGitignoreRules = [".supercodex/"] as const;
 
 const stateTemplate: JsonObject = {
-  version: 1,
+  version: 2,
   goal: "",
-  mode: "planning",
-  phase: "plan",
+  mode: "clarification",
+  phase: "requirements",
   executionLock: false,
   canAskUser: true,
   currentStageId: null,
   currentTaskId: null,
   planIteration: 1,
+  prdIteration: 1,
+  acceptanceMatrixIteration: 1,
+  objectiveAuditIteration: 0,
   stageIteration: 0,
   repairAttemptsForCurrentTask: 0,
+  finalGoalLedgerExists: false,
+  finalGoalLedgerHash: "",
+  activePrdPath: ".supercodex/docs/PRD.md",
+  activePlanPath: ".supercodex/docs/PLAN.md",
+  activeAcceptanceMatrixPath: ".supercodex/docs/ACCEPTANCE_MATRIX.md",
+  prdCoverageStatus: "unknown",
+  planCoverageStatus: "unknown",
+  finalObjectiveAuditStatus: "not_started",
+  lastObjectiveAuditResult: null,
+  lastObjectiveAuditGapTypes: [],
+  sourceRequirementsTotal: 0,
+  sourceRequirementsMappedToPrd: 0,
+  sourceRequirementsMappedToPlan: 0,
+  sourceRequirementsPassed: 0,
+  sourceRequirementsFailed: 0,
+  sourceRequirementsUnmapped: 0,
   lastCompletedStageId: null,
   lastCompletedTaskId: null,
   lastCommand: null,
@@ -250,6 +271,14 @@ export function parsePlanTasks(planText: string): PlanTask[] {
 
 export function chooseNextWork(snapshot: ProjectSnapshot): WorkItem {
   if (snapshot.done) {
+    if (!finalObjectiveAuditPassed(snapshot)) {
+      return {
+        kind: "stage_gate",
+        title: "运行 Final Objective Audit 后再确认最终交付",
+        reason: ".supercodex/state.json.done is true, but Final Goal Ledger / Final Objective Audit evidence is missing or not passed.",
+        source: "objective-audit",
+      };
+    }
     return { kind: "done", title: "Project marked done", reason: ".supercodex/state.json.done is true", source: "state" };
   }
   const criticalMissing = snapshot.missingDocs.filter((doc) => doc === "PRD.md" || doc === "PLAN.md");
@@ -299,6 +328,14 @@ export function chooseNextWork(snapshot: ProjectSnapshot): WorkItem {
     reason: "No actionable backlog or PLAN tasks were found.",
     source: "bootstrap",
   };
+}
+
+function finalObjectiveAuditPassed(snapshot: ProjectSnapshot): boolean {
+  return (
+    snapshot.docsPresent["FINAL_GOAL_LEDGER.md"] === true &&
+    snapshot.docsPresent["FINAL_OBJECTIVE_AUDIT.md"] === true &&
+    snapshot.state.finalObjectiveAuditStatus === "passed"
+  );
 }
 
 export function chooseFromBacklog(backlog: JsonObject, state: JsonObject = {}): WorkItem | null {
@@ -584,19 +621,23 @@ function projectAgentsTemplateCandidates(): string[] {
 function fallbackProjectAgentsTemplate(): string {
   return `# AGENTS.md - SuperCodex Project Instructions
 
-This project is managed by SuperCodex. Before doing work, Codex must read the project state, preserve existing PRD/PLAN/backlog/checkpoints, inspect git status, and resume from the next unfinished task instead of restarting from scratch.
+This project is managed by SuperCodex. Before doing work, Codex must read the project state, preserve existing Final Goal Ledger / PRD / PLAN / backlog / checkpoints, inspect git status, and resume from the next unfinished task instead of restarting from scratch.
 
 Required durable state:
 
 - \`.supercodex/state.json\`
 - \`.supercodex/backlog.json\`
 - \`.supercodex/checkpoints.md\`
+- \`.supercodex/docs/FINAL_GOAL_LEDGER.md\`
 - \`.supercodex/docs/PRD.md\`
 - \`.supercodex/docs/PLAN.md\`
 - \`.supercodex/docs/ACCEPTANCE_MATRIX.md\`
 - \`.supercodex/docs/GAP_REPORT.md\`
+- \`.supercodex/docs/FINAL_OBJECTIVE_AUDIT.md\`
 
-If execution is blocked by external credentials, network, or remote Git permission, record the blocker in \`.supercodex/docs/BLOCKERS.md\` and continue all unblocked local work. Do not claim tests, build, push, PR, or final delivery succeeded unless they were actually run and recorded.
+The Final Goal Ledger is the root source of truth. Existing PRD and PLAN should not be replaced from scratch, but if coverage review or Final Objective Audit proves that they do not satisfy the ledger, archive the old active document, revise the required artifacts, update the backlog/checkpoint, and continue.
+
+If execution is blocked by external credentials, network, or remote Git permission, record the blocker in \`.supercodex/docs/BLOCKERS.md\` and continue all unblocked local work. Do not claim tests, build, push, PR, or final delivery succeeded unless they were actually run and recorded. Do not treat completed PLAN tasks, passing tests, commits, pushes, or PR docs as final delivery without a passed Final Objective Audit.
 `;
 }
 

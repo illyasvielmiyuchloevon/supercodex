@@ -253,6 +253,11 @@ test("operator message on a done project runs as supervised intervention without
   assert.equal(code, 0);
   assert.match(capturedPrompt, /External Supervisor Prompt/);
   assert.match(capturedPrompt, /Runtime Operator Intervention/);
+  assert.match(capturedPrompt, /FINAL_GOAL_LEDGER\.md/);
+  assert.match(capturedPrompt, /FINAL_OBJECTIVE_AUDIT\.md/);
+  assert.match(capturedPrompt, /Continuity and Revision Rule/);
+  assert.match(capturedPrompt, /archive the old active artifact/);
+  assert.doesNotMatch(capturedPrompt, /Do not replace PRD, do not rewrite PLAN into a new strategy, and do not replan completed or in-progress work\./);
   assert.match(capturedPrompt, /kind: operator_intervention/);
   assert.match(capturedPrompt, new RegExp(message));
   const state = JSON.parse(await readFile(join(project, ".supercodex", "state.json"), "utf8")) as { done?: boolean };
