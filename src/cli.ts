@@ -175,10 +175,10 @@ async function cmdRun(args: ParsedArgs): Promise<number> {
     project,
     goal: stringFlag(args, "goal", ""),
     maxCycles: explicitMaxCycles ?? (dryRun ? 1 : Number.POSITIVE_INFINITY),
-    maxRetries: numberFlag(args, "max-retries", 3),
+    maxRetries: numberFlag(args, "max-retries", 10),
     networkTransientMaxRetries: numberFlag(args, "network-transient-max-retries", 10),
     remoteCompactionMaxRetries: numberFlag(args, "remote-compaction-max-retries", 20),
-    sameSessionRetryLimit: numberFlag(args, "same-session-retry-limit", 2),
+    sameSessionRetryLimit: numberFlag(args, "same-session-retry-limit", 10),
     retryBaseSeconds: numberFlag(args, "retry-base-seconds", 5),
     retryMaxSeconds: numberFlag(args, "retry-max-seconds", 60),
     dryRun,
@@ -450,13 +450,13 @@ Common:
   --max-cycles <n>            Optional cap; omitted real runs continue until done
   --timeout-seconds <n>
   --idle-timeout-seconds <n>  Optional no-event timeout; disabled by default
-  --max-retries <n>           Retry threshold before recoverable failures escalate to a fresh thread
+  --max-retries <n>           Retry threshold before recoverable failures escalate to a fresh thread; default 10
   --network-transient-max-retries <n>
                               Same-thread network transient failures before fresh thread; default 10
   --remote-compaction-max-retries <n>
                               Same-thread remote pre-sampling compaction failures before fresh thread; default 20
   --same-session-retry-limit <n>
-                              Same-thread failure threshold before starting a fresh thread
+                              Same-thread failure threshold before starting a fresh thread; default 10
   --codex-bin <path-or-name>
   --supercodex-home <path>     Saved auth/config root; defaults to ~/.supercodex
   --run-id <id>               Isolate SuperCodex controls/session for parallel worktrees

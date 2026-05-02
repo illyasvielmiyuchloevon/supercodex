@@ -19,8 +19,10 @@ test("resumableThreadId rejects dry-run and non-recoverable sessions", () => {
 test("default supervisor config runs until done unless explicitly capped", () => {
   const config = defaultSupervisorConfig(".");
   assert.equal(config.maxCycles, Number.POSITIVE_INFINITY);
+  assert.equal(config.maxRetries, 10);
   assert.equal(config.networkTransientMaxRetries, 10);
   assert.equal(config.remoteCompactionMaxRetries, 20);
+  assert.equal(config.sameSessionRetryLimit, 10);
 });
 
 test("stage change forces a fresh app-server thread", async () => {
@@ -154,30 +156,30 @@ test("operator stop without a message interrupts once and does not start a repla
   assert.deepEqual(calls, [{ threadId: null, resume: false }]);
 });
 
-test("recoverable failures reaching retry threshold force fresh thread and keep running", async () => {
+test("ordinary recoverable failures retry same Codex thread ten times before fresh thread", async () => {
   const project = await mkdtemp(join(tmpdir(), "supercodex-recoverable-retry-"));
   await writeProjectState(project);
   const calls: Array<{ threadId?: string | null; resume?: boolean }> = [];
   const runner: Runner = {
     async run(input) {
       calls.push({ threadId: input.threadId, resume: input.resume });
-      if (calls.length < 4) {
+      if (calls.length <= 10) {
         return failedResult("thr_compaction", "context_compaction_failed");
       }
       return result("thr_fresh");
     },
   };
-  const config = { ...defaultSupervisorConfig(project), maxCycles: 4, maxRetries: 3, retryBaseSeconds: 0, retryMaxSeconds: 0 };
+  const config = { ...defaultSupervisorConfig(project), maxCycles: 11, retryBaseSeconds: 0, retryMaxSeconds: 0 };
 
   const code = await new Supervisor(config, runner, async () => undefined).run();
 
   assert.equal(code, 0);
-  assert.deepEqual(calls, [
-    { threadId: null, resume: false },
-    { threadId: "thr_compaction", resume: true },
-    { threadId: "thr_compaction", resume: true },
-    { threadId: null, resume: false },
-  ]);
+  assert.equal(calls.length, 11);
+  assert.deepEqual(calls[0], { threadId: null, resume: false });
+  for (const call of calls.slice(1, 10)) {
+    assert.deepEqual(call, { threadId: "thr_compaction", resume: true });
+  }
+  assert.deepEqual(calls[10], { threadId: null, resume: false });
 });
 
 test("network transient failures retry same Codex thread ten times before fresh thread", async () => {
