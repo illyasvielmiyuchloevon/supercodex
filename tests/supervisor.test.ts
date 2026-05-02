@@ -176,7 +176,7 @@ test("recoverable failures reaching retry threshold force fresh thread and keep 
   ]);
 });
 
-test("operator message on a done project runs as intervention without reopening final gate", async () => {
+test("operator message on a done project runs as supervised intervention without reopening final gate", async () => {
   const project = await mkdtemp(join(tmpdir(), "supercodex-done-intervention-"));
   await writeDoneProjectState(project);
   const message = "请处理新的 TUI 变更请求";
@@ -193,14 +193,15 @@ test("operator message on a done project runs as intervention without reopening 
   const code = await new Supervisor(config, runner, async () => undefined).run();
 
   assert.equal(code, 0);
-  assert.equal(capturedPrompt, message);
-  assert.doesNotMatch(capturedPrompt, /External Supervisor Prompt/);
-  assert.doesNotMatch(capturedPrompt, /kind: operator_intervention/);
+  assert.match(capturedPrompt, /External Supervisor Prompt/);
+  assert.match(capturedPrompt, /Runtime Operator Intervention/);
+  assert.match(capturedPrompt, /kind: operator_intervention/);
+  assert.match(capturedPrompt, new RegExp(message));
   const state = JSON.parse(await readFile(join(project, ".supercodex", "state.json"), "utf8")) as { done?: boolean };
   assert.equal(state.done, true);
 });
 
-test("fresh TUI operator mode prioritizes the message over unfinished plan work", async () => {
+test("fresh TUI operator mode wraps the message while prioritizing it over unfinished plan work", async () => {
   const project = await mkdtemp(join(tmpdir(), "supercodex-fresh-intervention-"));
   await writeProjectState(project);
   const message = "这是一次新的普通输入，不是 /start 续跑";
@@ -224,9 +225,10 @@ test("fresh TUI operator mode prioritizes the message over unfinished plan work"
   const code = await new Supervisor(config, runner, async () => undefined).run();
 
   assert.equal(code, 0);
-  assert.equal(capturedPrompt, message);
-  assert.doesNotMatch(capturedPrompt, /External Supervisor Prompt/);
-  assert.doesNotMatch(capturedPrompt, /kind: operator_intervention/);
+  assert.match(capturedPrompt, /External Supervisor Prompt/);
+  assert.match(capturedPrompt, /Runtime Operator Intervention/);
+  assert.match(capturedPrompt, /kind: operator_intervention/);
+  assert.match(capturedPrompt, new RegExp(message));
   assert.doesNotMatch(capturedPrompt, /kind: task/);
 });
 

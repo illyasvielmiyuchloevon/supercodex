@@ -4,6 +4,7 @@ import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { AppServerClient, AppServerRunner, classifyAppServerFailure, summarizeAppServerNotification } from "../src/app-server.js";
+import { requestSteer } from "../src/control.js";
 
 test("classifyAppServerFailure maps structured Codex errors", () => {
   assert.equal(classifyAppServerFailure({ codexErrorInfo: "usageLimitExceeded" }), "usage_limit");
@@ -189,6 +190,82 @@ test("waitForTurnCompletion can interrupt an explicitly configured idle turn", a
 
   assert.deepEqual(requests, ["turn/interrupt"]);
   assert.equal(classifyAppServerFailure(result), "idle_timeout");
+});
+
+test("waitForTurnCompletion forwards active steering text directly to Codex app-server", async () => {
+  const runner = new AppServerRunner(undefined, null);
+  const wait = (runner as unknown as {
+    waitForTurnCompletion(input: {
+      client: {
+        onNotification(handler: (message: unknown) => void): void;
+        request(method: string, params?: unknown): Promise<unknown>;
+        hasExited(): boolean;
+        exitSummary(): string;
+        stderrText(): string;
+        idleSeconds(): number;
+        lastActivitySummary(): string;
+      };
+      project: string;
+      runId?: string | null;
+      threadId: string;
+      turnId: string;
+      initialCompletion: unknown;
+      setOperator(message: string | null, id: string | null): void;
+    }): Promise<Record<string, unknown>>;
+  }).waitForTurnCompletion.bind(runner);
+  const project = await mkdtemp(join(tmpdir(), "supercodex-steer-"));
+  const steerText = "运行中这句话应直接发送";
+  await requestSteer(project, steerText, "default");
+  const requests: Array<{ method: string; params?: unknown }> = [];
+  let notify: ((message: unknown) => void) | null = null;
+
+  const result = await wait({
+    client: {
+      onNotification(handler) {
+        notify = handler;
+      },
+      async request(method, params) {
+        requests.push({ method, params });
+        if (method === "turn/steer") {
+          notify?.({ method: "turn/completed", params: { turn: { id: "turn-1", status: "completed" } } });
+        }
+        return {};
+      },
+      hasExited() {
+        return false;
+      },
+      exitSummary() {
+        return "still running";
+      },
+      stderrText() {
+        return "";
+      },
+      idleSeconds() {
+        return 0;
+      },
+      lastActivitySummary() {
+        return "test";
+      },
+    },
+    project,
+    runId: "default",
+    threadId: "thread-1",
+    turnId: "turn-1",
+    initialCompletion: null,
+    setOperator() {},
+  });
+
+  assert.equal((result.turn as { status?: string }).status, "completed");
+  assert.deepEqual(requests, [
+    {
+      method: "turn/steer",
+      params: {
+        threadId: "thread-1",
+        expectedTurnId: "turn-1",
+        input: [{ type: "text", text: steerText, text_elements: [] }],
+      },
+    },
+  ]);
 });
 
 test("thread/start uses Codex app-server startup source accepted by stable CLI", () => {

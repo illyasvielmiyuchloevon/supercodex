@@ -9,9 +9,6 @@ export function buildPrompt(input: {
 }): string {
   const { snapshot, work } = input;
   const directOperatorMessage = input.operatorMessage?.trim() ?? "";
-  if (work.kind === "operator_intervention" && directOperatorMessage) {
-    return directOperatorMessage;
-  }
   const state = snapshot.state;
   const previousBlock = input.previousResult
     ? `
