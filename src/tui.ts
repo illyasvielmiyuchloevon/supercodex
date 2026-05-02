@@ -575,6 +575,20 @@ class TerminalTui {
     } else if (!interaction) {
       this.interactionSelection = 0;
     }
+    if (key.name === "escape") {
+      if (this.supervisorPromise && !this.inputBuffer) {
+        const request = await requestTurnInterrupt(this.project, "", this.activeRunId);
+        this.addLog(`[supercodex] stop requested ${request.id}`);
+        await this.refreshStatus();
+        this.render();
+        return;
+      }
+      this.inputBuffer = "";
+      this.cursor = 0;
+      this.commandSelection = 0;
+      this.render();
+      return;
+    }
     if (key.name === "return") {
       const line = this.inputBuffer;
       this.inputBuffer = "";
@@ -622,13 +636,6 @@ class TerminalTui {
     }
     if (key.name === "end") {
       this.cursor = this.inputBuffer.length;
-      this.render();
-      return;
-    }
-    if (key.name === "escape") {
-      this.inputBuffer = "";
-      this.cursor = 0;
-      this.commandSelection = 0;
       this.render();
       return;
     }

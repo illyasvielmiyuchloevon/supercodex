@@ -202,6 +202,48 @@ test("operator stop without a message interrupts once and does not start a repla
   assert.deepEqual(calls, [{ threadId: null, resume: false }]);
 });
 
+test("operator stop during an operator-message turn does not replay the original message", async () => {
+  const project = await mkdtemp(join(tmpdir(), "supercodex-stop-message-turn-"));
+  await writeProjectState(project);
+  await requestSteer(project, "start this supervised operator task", "default");
+  const calls: Array<{ threadId?: string | null; resume?: boolean }> = [];
+  const runner: Runner = {
+    async run(input) {
+      calls.push({ threadId: input.threadId, resume: input.resume });
+      assert.match(input.prompt, /start this supervised operator task/);
+      return interruptedResult("thr_stop", { controlId: "stop-request" });
+    },
+  };
+  const config = { ...defaultSupervisorConfig(project), maxCycles: 3, operatorIntervention: true, retryBaseSeconds: 0, retryMaxSeconds: 0 };
+
+  const code = await new Supervisor(config, runner, async () => undefined).run();
+
+  assert.equal(code, 130);
+  assert.deepEqual(calls, [{ threadId: null, resume: false }]);
+});
+
+test("operator interrupt with a supplied message resumes with that message", async () => {
+  const project = await mkdtemp(join(tmpdir(), "supercodex-interrupt-message-"));
+  await writeProjectState(project);
+  const prompts: string[] = [];
+  const runner: Runner = {
+    async run(input) {
+      prompts.push(input.prompt);
+      if (prompts.length === 1) {
+        return interruptedResult("thr_interrupted", { controlId: "interrupt-request", operatorMessage: "inspect this failure before continuing" });
+      }
+      return result("thr_interrupted");
+    },
+  };
+  const config = { ...defaultSupervisorConfig(project), maxCycles: 2, retryBaseSeconds: 0, retryMaxSeconds: 0 };
+
+  const code = await new Supervisor(config, runner, async () => undefined).run();
+
+  assert.equal(code, 0);
+  assert.equal(prompts.length, 2);
+  assert.match(prompts[1]!, /inspect this failure before continuing/);
+});
+
 test("ordinary recoverable failures retry same Codex thread ten times before fresh thread", async () => {
   const project = await mkdtemp(join(tmpdir(), "supercodex-recoverable-retry-"));
   await writeProjectState(project);
@@ -451,7 +493,7 @@ function failedResult(threadId: string, classification: string): CodexRunResult 
   };
 }
 
-function interruptedResult(threadId: string): CodexRunResult {
+function interruptedResult(threadId: string, overrides: Partial<CodexRunResult> = {}): CodexRunResult {
   return {
     returnCode: 130,
     classification: "operator_interrupt",
@@ -461,5 +503,6 @@ function interruptedResult(threadId: string): CodexRunResult {
     threadId,
     durationSeconds: 0,
     command: ["codex", "app-server", "--listen", "stdio://"],
+    ...overrides,
   };
 }

@@ -229,7 +229,7 @@ export class Supervisor {
       await saveSupervisorSession(project, sessionPayload, runId);
 
       if (result.classification === "operator_interrupt") {
-        const interruptMessage = result.operatorMessage ?? currentOperatorMessage;
+        const interruptMessage = operatorInterruptMessage(result);
         previousResult = result;
         consecutiveFailures = 0;
         consecutiveNetworkTransientFailures = 0;
@@ -509,6 +509,11 @@ function operatorInterventionWork(previousWork: WorkItem): WorkItem {
         : `Operator supplied a runtime message while the selected work was '${previousWork.title}'; prioritize the user message instead of a synthetic final gate.`,
     source: "control",
   };
+}
+
+function operatorInterruptMessage(result: CodexRunResult): string | null {
+  const message = result.operatorMessage?.trim();
+  return message ? message : null;
 }
 
 export function resumableThreadId(sessionState: Record<string, unknown>): string | null {

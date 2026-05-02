@@ -2,7 +2,7 @@
 
 This guide is for day-to-day use. It is not an internal `.supercodex` delivery log. It describes how the current app-server/OpenTUI version is installed, started, resumed, configured, and verified.
 
-Current version: `0.11.0` (0.11 release). License: MIT.
+Current version: `0.12.0` (0.12 release). License: MIT.
 
 ## 1. Install the Current Version
 
