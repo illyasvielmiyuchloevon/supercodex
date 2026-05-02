@@ -27,6 +27,7 @@ export interface SupervisorConfig {
   goal: string;
   maxCycles: number;
   maxRetries: number;
+  networkTransientMaxRetries: number;
   remoteCompactionMaxRetries: number;
   sameSessionRetryLimit: number;
   retryBaseSeconds: number;
@@ -58,6 +59,7 @@ export function defaultSupervisorConfig(project: string): SupervisorConfig {
     goal: "",
     maxCycles: Number.POSITIVE_INFINITY,
     maxRetries: 3,
+    networkTransientMaxRetries: 10,
     remoteCompactionMaxRetries: 20,
     sameSessionRetryLimit: 2,
     retryBaseSeconds: 5,
@@ -134,6 +136,7 @@ export class Supervisor {
 
     let previousResult: CodexRunResult | null = null;
     let consecutiveFailures = 0;
+    let consecutiveNetworkTransientFailures = 0;
     let consecutiveRemoteCompactionFailures = 0;
     let sameSessionFailures = 0;
     let consecutiveAuthFailures = 0;
@@ -229,6 +232,7 @@ export class Supervisor {
         const interruptMessage = result.operatorMessage ?? currentOperatorMessage;
         previousResult = result;
         consecutiveFailures = 0;
+        consecutiveNetworkTransientFailures = 0;
         consecutiveRemoteCompactionFailures = 0;
         sameSessionFailures = 0;
         consecutiveAuthFailures = 0;
@@ -246,6 +250,7 @@ export class Supervisor {
       if (isRunOk(result)) {
         previousResult = null;
         consecutiveFailures = 0;
+        consecutiveNetworkTransientFailures = 0;
         consecutiveRemoteCompactionFailures = 0;
         sameSessionFailures = 0;
         consecutiveAuthFailures = 0;
@@ -256,6 +261,7 @@ export class Supervisor {
       previousResult = result;
       if (result.classification === "remote_compaction_failed") {
         consecutiveRemoteCompactionFailures++;
+        consecutiveNetworkTransientFailures = 0;
         consecutiveFailures = 0;
         sameSessionFailures = 0;
         consecutiveAuthFailures = 0;
@@ -288,6 +294,40 @@ export class Supervisor {
         continue;
       }
       consecutiveRemoteCompactionFailures = 0;
+      if (result.classification === "network_transient") {
+        consecutiveNetworkTransientFailures++;
+        consecutiveFailures = 0;
+        sameSessionFailures = 0;
+        consecutiveAuthFailures = 0;
+        await checkpoint(
+          project,
+          work,
+          command,
+          result.classification,
+          `Supervisor cycle ${cycle} hit network transient failure ${consecutiveNetworkTransientFailures}/${networkTransientRetryLimit(this.config)}.`,
+          "Retry the same Codex thread until the network transient retry threshold is exceeded; then continue with a fresh Codex thread in the same SuperCodex run.",
+        );
+        const delay = Math.min(this.config.retryMaxSeconds, this.config.retryBaseSeconds * 2 ** Math.max(0, consecutiveNetworkTransientFailures - 1));
+        if (consecutiveNetworkTransientFailures >= networkTransientRetryLimit(this.config)) {
+          await patchSupervisorSettings(project, { forceFreshNext: true }, runId);
+          await recordProgress(
+            project,
+            "network-transient-escalate",
+            `Network transient failure reached ${consecutiveNetworkTransientFailures}/${networkTransientRetryLimit(this.config)}. SuperCodex will keep run '${runId}' and continue with a fresh Codex thread after ${delay.toFixed(1)}s.`,
+          );
+          consecutiveNetworkTransientFailures = 0;
+          await this.sleeper(delay);
+          continue;
+        }
+        await recordProgress(
+          project,
+          "network-transient-retry",
+          `Network transient failure ${consecutiveNetworkTransientFailures}/${networkTransientRetryLimit(this.config)}; retrying the same Codex thread after ${delay.toFixed(1)}s.`,
+        );
+        await this.sleeper(delay);
+        continue;
+      }
+      consecutiveNetworkTransientFailures = 0;
       consecutiveFailures++;
       if (!isAuthFailureClassification(result.classification)) {
         consecutiveAuthFailures = 0;
@@ -500,6 +540,10 @@ export function shouldResumeStoredThread(sessionState: Record<string, unknown>, 
 
 function isAuthFailureClassification(classification: string): classification is "usage_limit" | "unauthorized" {
   return classification === "usage_limit" || classification === "unauthorized";
+}
+
+function networkTransientRetryLimit(config: SupervisorConfig): number {
+  return Math.max(1, Math.floor(config.networkTransientMaxRetries));
 }
 
 function remoteCompactionRetryLimit(config: SupervisorConfig): number {

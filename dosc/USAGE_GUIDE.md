@@ -93,9 +93,9 @@ These cases can start a fresh Codex thread inside the same SuperCodex run:
 
 This protects new stages from stale Codex context. It is not the same as losing the SuperCodex session.
 
-`--max-retries` does not stop ordinary recoverable failures. For recoverable app-server failures such as transient network disconnects, it is the threshold for escalating recovery to a fresh Codex thread. Non-recoverable failures can still stop after the retry threshold.
+`--max-retries` does not stop ordinary recoverable failures. For ordinary recoverable app-server failures, it is the threshold for escalating recovery to a fresh Codex thread. Non-recoverable failures can still stop after the retry threshold.
 
-Remote pre-sampling compaction failures use a separate same-thread threshold: SuperCodex retries the same Codex thread up to 20 times by default, then keeps the same SuperCodex run and continues with a fresh Codex thread.
+Network transient failures and remote pre-sampling compaction failures use separate same-thread thresholds. Network transient failures retry the same Codex thread up to 10 times by default. Remote pre-sampling compaction failures retry the same Codex thread up to 20 times by default. After either threshold, SuperCodex keeps the same run and continues with a fresh Codex thread.
 
 ### `/resume` Selects Without Running
 

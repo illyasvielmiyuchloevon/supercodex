@@ -195,13 +195,14 @@ supercodex attach --project C:\path\to\project
 supercodex interrupt --project C:\path\to\project --message "Stop and inspect the current direction."
 ```
 
-`run` continues until the project is done unless you pass `--max-cycles`. Recoverable Codex app-server failures such as network disconnects, context-window errors, timeouts, and missing sessions are retried with backoff. `--max-retries` is the escalation threshold for ordinary recoverable failures: after the threshold, SuperCodex forces a fresh Codex thread and keeps running. It is a stop threshold only for non-recoverable failures.
+`run` continues until the project is done unless you pass `--max-cycles`. Recoverable Codex app-server failures such as context-window errors, timeouts, and missing sessions are retried with backoff. `--max-retries` is the escalation threshold for ordinary recoverable failures: after the threshold, SuperCodex forces a fresh Codex thread and keeps running. It is a stop threshold only for non-recoverable failures.
 
-Remote pre-sampling compaction failures are stricter: SuperCodex retries the same Codex thread up to 20 times by default before forcing a fresh Codex thread in the same SuperCodex run.
+Network transient failures and remote pre-sampling compaction failures have stricter same-thread budgets. Network transient failures retry the same Codex thread up to 10 times by default. Remote pre-sampling compaction failures retry the same Codex thread up to 20 times by default. After either threshold, SuperCodex keeps the same run and continues with a fresh Codex thread.
 
 ```powershell
 supercodex run --project C:\path\to\project --max-cycles 1
 supercodex run --project C:\path\to\project --max-retries 3
+supercodex run --project C:\path\to\project --network-transient-max-retries 10
 supercodex run --project C:\path\to\project --remote-compaction-max-retries 20
 supercodex run --project C:\path\to\project --idle-timeout-seconds 1200
 supercodex run --project C:\path\to\project --run-id main

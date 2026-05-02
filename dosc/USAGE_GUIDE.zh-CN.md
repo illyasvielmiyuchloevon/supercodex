@@ -87,9 +87,9 @@ supercodex
 
 这种行为是为了防止旧上下文污染新阶段，不是 session 丢失。
 
-`--max-retries` 不再表示普通可恢复错误失败几次就停。对网络瞬断、上下文窗口错误等普通可恢复 app-server 错误，它表示达到阈值后升级恢复策略，强制 fresh Codex thread 并继续运行；只有不可恢复错误才会按这个阈值停止。
+`--max-retries` 不再表示普通可恢复错误失败几次就停。对上下文窗口错误等普通可恢复 app-server 错误，它表示达到阈值后升级恢复策略，强制 fresh Codex thread 并继续运行；只有不可恢复错误才会按这个阈值停止。
 
-remote pre-sampling compaction 失败使用单独的同 thread 阈值：默认最多在同一个 Codex thread 内重试 20 次，然后保持同一个 SuperCodex run，并用 fresh Codex thread 继续。
+网络波动和 remote pre-sampling compaction 失败使用单独的同 thread 阈值。网络波动默认最多在同一个 Codex thread 内重试 10 次；remote pre-sampling compaction 默认最多在同一个 Codex thread 内重试 20 次。任一阈值达到后，SuperCodex 保持同一个 run，并用 fresh Codex thread 继续。
 
 ### `/resume` 是只选不跑
 
