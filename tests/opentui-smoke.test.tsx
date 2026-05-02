@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import type { AgentToastRecord } from "../src/opentui/toast";
 import { autocompleteOverlayLayout, formatSuggestionRow } from "../src/opentui/autocomplete";
-import { smokeChooseSlashCommandWithEnter, smokeChooseSlashPrefixCommandWithEnter, smokeOperateCodexInteractionPickerWithKeyboard, smokeOperateStopPickerWithKeyboard, smokeRenderOpenTui, smokeRenderOpenTuiCustomTheme, smokeRenderOpenTuiDialogHost, smokeRenderOpenTuiLongTranscript, smokeRenderOpenTuiModelPicker, smokeRenderOpenTuiPanels, smokeRenderOpenTuiPermissionsPicker, smokeRenderOpenTuiPrefersCanonicalTranscriptLines, smokeRenderOpenTuiResponsiveMetadata, smokeRenderOpenTuiResumePicker, smokeRenderOpenTuiRunningControls, smokeRenderOpenTuiSecondaryCommandPicker, smokeRenderOpenTuiStructuredMessages, smokeRenderOpenTuiToastsAndErrorBoundary, smokeRenderOpenTuiTranscriptUpdateBurst, smokeRenderOpenTuiViewportMatrix, smokeRouteOpenTuiStartCommand, smokeSubmitOpenTuiPromptMultiline, stableSidebarWidth } from "../src/opentui-app";
+import { pushToast, removeToastById, smokeChooseSlashCommandWithEnter, smokeChooseSlashPrefixCommandWithEnter, smokeOperateCodexInteractionPickerWithKeyboard, smokeOperateStopPickerWithKeyboard, smokeRenderOpenTui, smokeRenderOpenTuiCustomTheme, smokeRenderOpenTuiDialogHost, smokeRenderOpenTuiLongTranscript, smokeRenderOpenTuiModelPicker, smokeRenderOpenTuiPanels, smokeRenderOpenTuiPermissionsPicker, smokeRenderOpenTuiPrefersCanonicalTranscriptLines, smokeRenderOpenTuiResponsiveMetadata, smokeRenderOpenTuiResumePicker, smokeRenderOpenTuiRunningControls, smokeRenderOpenTuiSecondaryCommandPicker, smokeRenderOpenTuiStructuredMessages, smokeRenderOpenTuiToastsAndErrorBoundary, smokeRenderOpenTuiTranscriptUpdateBurst, smokeRenderOpenTuiViewportMatrix, smokeRouteOpenTuiStartCommand, smokeSubmitOpenTuiPromptMultiline, stableSidebarWidth } from "../src/opentui-app";
+import { SUPERCODEX_VERSION } from "../src/version";
 
 describe("OpenTUI frontend", () => {
   test("renders with the real OpenTUI Solid renderer", async () => {
     const frame = await smokeRenderOpenTui();
     expect(frame).toContain("SuperCodex");
+    expect(frame).toContain(`SuperCodex v${SUPERCODEX_VERSION}`);
     expect(frame).toContain("OpenTUI managed");
     expect(frame).toContain("OpenTUI textarea");
     expect(frame).toContain("assistant: working");
@@ -159,6 +162,17 @@ describe("OpenTUI frontend", () => {
     expect(frame).toContain("UI Error");
     expect(frame).toContain("render failure");
     expect(frame).toContain("Reset");
+  });
+
+  test("can dismiss transient toast feedback by id", () => {
+    let toasts: AgentToastRecord[] = [{ id: "old", message: "old toast", variant: "info" }];
+    const id = pushToast((update) => {
+      toasts = update(toasts);
+    }, "Stop requested for the active Codex turn.", "warning");
+    expect(toasts.some((toast) => toast.id === id)).toBe(true);
+    toasts = removeToastById(toasts, id);
+    expect(toasts.some((toast) => toast.id === id)).toBe(false);
+    expect(toasts.some((toast) => toast.id === "old")).toBe(true);
   });
 
   test("renders local TUI theme/config metadata", async () => {

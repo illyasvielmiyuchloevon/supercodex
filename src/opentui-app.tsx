@@ -28,6 +28,7 @@ import { formatRunSessions, listRunSessions, prepareRunSessionForResume, resolve
 import { canonicalSlashCommandName, type SlashCommandSuggestion } from "./tui-commands.js";
 import { TuiTranscriptSource } from "./tui-transcript.js";
 import { chooseNextWork, loadSnapshotForRun, loadSupervisorRuntime } from "./workspace.js";
+import { SUPERCODEX_VERSION } from "./version.js";
 import type { JsonObject } from "./types.js";
 import { readAgentTuiConfig, type AgentTuiConfig } from "./opentui/config";
 import { handleDialogKey as handleSharedDialogKey } from "./opentui/dialog-stack";
@@ -148,7 +149,7 @@ export function AgentSupervisorOpenTuiView(props: OpenTuiViewProps) {
       <OpenTuiErrorBoundary theme={theme()}>
         <MaybeThrow message={props.forceError} />
         <box flexDirection="row" justifyContent="space-between" paddingLeft={1} paddingRight={1} height={1} flexShrink={0}>
-          <text fg={theme().primary}>SuperCodex</text>
+          <text fg={theme().primary}>SuperCodex v{SUPERCODEX_VERSION}</text>
           <text fg={activityFg(activity().kind, theme())}>{activity().label}</text>
         </box>
         <box flexDirection="row" justifyContent="space-between" paddingLeft={1} paddingRight={1} height={1} flexShrink={0}>
@@ -1264,11 +1265,27 @@ function OpenTuiRuntime(props: {
   const [pickerSelection, setPickerSelection] = createSignal(0);
   const [toasts, setToasts] = createSignal<AgentToastRecord[]>([]);
   const [pollTimer, setPollTimer] = createSignal<ReturnType<typeof setInterval> | null>(null);
+  const toastTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const pollMs = Number(process.env.SUPERCODEX_POLL_MS ?? "500");
   const publishTranscript = () => {
     const transcriptSnapshot = transcript.snapshot();
     setTranscriptLines(transcriptSnapshot.lines);
     setTranscriptMessages(transcriptSnapshot.messages);
+  };
+  const dismissToast = (toastId: string) => {
+    const timer = toastTimers.get(toastId);
+    if (timer) clearTimeout(timer);
+    toastTimers.delete(toastId);
+    setToasts((current) => removeToastById(current, toastId));
+    renderer.requestRender();
+  };
+  const showToast = (message: string, variant: AgentToastRecord["variant"] = "info", ttlMs = DEFAULT_TOAST_TTL_MS) => {
+    const toastId = pushToast(setToasts, message, variant);
+    if (ttlMs > 0) {
+      const timer = setTimeout(() => dismissToast(toastId), ttlMs);
+      toastTimers.set(toastId, timer);
+    }
+    renderer.requestRender();
   };
 
   const refresh = async () => {
@@ -1330,6 +1347,10 @@ function OpenTuiRuntime(props: {
   onCleanup(() => {
     const timer = pollTimer();
     if (timer) clearInterval(timer);
+    for (const toastTimer of toastTimers.values()) {
+      clearTimeout(toastTimer);
+    }
+    toastTimers.clear();
     restoreTerminalTitle(renderer);
     void win32FlushInputBuffer();
   });
@@ -1543,7 +1564,7 @@ function OpenTuiRuntime(props: {
       }
       const request = await requestTurnInterrupt(props.project, "", runId());
       appendLocal(transcript, publishTranscript, `[supercodex] stop requested ${request.id}`);
-      pushToast(setToasts, "Stop requested for the active Codex turn.", "warning");
+      showToast("Stop requested for the active Codex turn.", "warning");
       await refresh();
       return;
     }
@@ -1604,7 +1625,7 @@ function OpenTuiRuntime(props: {
 
   const requestStop = () => {
     if (!isRuntimeActive(status()) && !supervisorTask()) {
-      pushToast(setToasts, "No active Codex turn is running.", "info");
+      showToast("No active Codex turn is running.", "info");
       return;
     }
     openPicker(stopConfirmationPicker());
@@ -2191,8 +2212,16 @@ function activityFg(kind: "running" | "starting" | "idle" | "error", theme: Retu
   return theme.muted;
 }
 
-function pushToast(setToasts: (fn: (current: AgentToastRecord[]) => AgentToastRecord[]) => void, message: string, variant: AgentToastRecord["variant"] = "info"): void {
-  setToasts((current) => [...current.slice(-3), { id: randomUUID(), message, variant }]);
+export const DEFAULT_TOAST_TTL_MS = 4500;
+
+export function pushToast(setToasts: (fn: (current: AgentToastRecord[]) => AgentToastRecord[]) => void, message: string, variant: AgentToastRecord["variant"] = "info"): string {
+  const id = randomUUID();
+  setToasts((current) => [...current.slice(-3), { id, message, variant }]);
+  return id;
+}
+
+export function removeToastById(current: AgentToastRecord[], toastId: string): AgentToastRecord[] {
+  return current.filter((toast) => toast.id !== toastId);
 }
 
 function parseJsonObject(raw: string | undefined): JsonObject {
