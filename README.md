@@ -2,9 +2,9 @@
 
 SuperCodex is a TypeScript/Node.js supervisor for Codex CLI. It runs Codex through the official `codex app-server --listen stdio://` JSON-RPC interface, keeps project state under `.supercodex/`, and provides an OpenTUI/Solid terminal UI for long-running, resumable software delivery work.
 
-Current version: `0.1.0` (0.1 release).
+Current version: `0.11.0` (0.11 release).
 
-The current 0.1 version is app-server only. The old one-shot runner and hand-drawn raw TUI are no longer the formal path.
+The current 0.11 version is app-server only. The old one-shot runner and hand-drawn raw TUI are no longer the formal path.
 
 ## What It Does
 
@@ -51,6 +51,33 @@ supercodex doctor --project C:\supercodex
 supercodex status --project C:\supercodex
 ```
 
+## Uninstall
+
+If you installed this repository with `npm link`, remove the global command:
+
+```powershell
+npm unlink -g supercodex
+```
+
+If you installed a packaged global build, remove it with:
+
+```powershell
+npm uninstall -g supercodex
+```
+
+Optional local cleanup inside the SuperCodex repository:
+
+```powershell
+cd C:\supercodex
+Remove-Item -Recurse -Force .\dist, .\node_modules
+```
+
+To remove SuperCodex state from a target project, delete that project's `.supercodex/` directory only after you no longer need its resume state, logs, reports, or checkpoints:
+
+```powershell
+Remove-Item -Recurse -Force .\.supercodex
+```
+
 ## Start the TUI
 
 In the project you want SuperCodex to work on:
@@ -85,11 +112,11 @@ There are intentional exceptions at the Codex thread level:
 
 - If there is no saved thread, Codex must start a new thread.
 - If `/fresh-next` was requested, the next cycle starts a fresh thread.
-- If the stored stage and next work stage differ, SuperCodex starts a fresh thread to avoid stale context.
+- When the active PLAN is exhausted, SuperCodex starts a fresh thread for full-project Final Acceptance / PRD / Architecture / PLAN review and next-cycle planning if needed.
 - If repeated same-session failures cross the configured limit, SuperCodex starts fresh.
 - If the previous session was a dry run or a non-recoverable failure, it is not reused.
 
-This distinction matters: `/start` does not create a new SuperCodex run, but it may intentionally start a new Codex thread inside that run when recovery would be unsafe.
+Stage or phase changes inside the active PLAN do not start a fresh Codex thread. Milestone completion may create an intermediate commit/push, but it still stays in the same plan-cycle thread and does not replace the Phase 7 final PR closure. This distinction matters: `/start` does not create a new SuperCodex run, but it may intentionally start a new Codex thread inside that run when recovery would be unsafe or when the PLAN-completion review boundary is reached.
 
 ## `/resume` and `/new`
 
@@ -214,8 +241,18 @@ Project-local runtime and recovery files:
 
 ```text
 .supercodex/
-  state.json
-  backlog.json
+  AUTO_DEV_STATE.json
+  FINAL_GOAL.md
+  CLARIFICATIONS.md
+  ASSUMPTIONS.md
+  PRD.md
+  ARCHITECTURE.md
+  PLAN.md
+  TRACEABILITY_MATRIX.md
+  TEST_REPORT.md
+  CODE_REVIEW_REPORT.md
+  FINAL_ACCEPTANCE_REPORT.md
+  PR_SUMMARY.md
   progress.md
   checkpoints.md
   last-action.md
@@ -224,7 +261,6 @@ Project-local runtime and recovery files:
     runtime.json
     runs/<run-id>/
   logs/
-  docs/
 ```
 
 `.supercodex/` is runtime state and is ignored by git by default.

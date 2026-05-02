@@ -1,5 +1,5 @@
-import { mkdir, rename, writeFile } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { supervisorDataRoot } from "./settings.js";
 import type { JsonObject, PlanTask, ProjectSnapshot, WorkItem } from "./types.js";
@@ -15,24 +15,22 @@ import {
 } from "./fs-utils.js";
 
 export const requiredDocs = [
-  "REQUIREMENTS.md",
-  "FINAL_GOAL_LEDGER.md",
+  "AUTO_DEV_STATE.json",
+  "FINAL_GOAL.md",
+  "CLARIFICATIONS.md",
+  "ASSUMPTIONS.md",
   "PRD.md",
   "ARCHITECTURE.md",
   "PLAN.md",
-  "ACCEPTANCE_MATRIX.md",
-  "GAP_REPORT.md",
-  "FINAL_OBJECTIVE_AUDIT.md",
-  "QA_REPORT.md",
-  "REVIEW_REPORT.md",
-  "DELIVERY_REPORT.md",
-  "BLOCKERS.md",
+  "TRACEABILITY_MATRIX.md",
+  "TEST_REPORT.md",
+  "CODE_REVIEW_REPORT.md",
+  "FINAL_ACCEPTANCE_REPORT.md",
+  "PR_SUMMARY.md",
 ] as const;
 
 const supercodexRoot = ".supercodex";
-const supercodexDocsRoot = ".supercodex/docs";
-const legacyAgentRoot = ".agent";
-const legacyDocsRoot = "docs";
+const autoDevStateFile = "AUTO_DEV_STATE.json";
 
 const agentDirs = [
   ".supercodex/logs/terminal",
@@ -42,60 +40,84 @@ const agentDirs = [
   ".supercodex/logs/repair",
   ".supercodex/logs/supercodex",
   ".supercodex/runtime",
-  ".supercodex/docs/pr",
 ] as const;
 
 const supercodexGitignoreRules = [".supercodex/"] as const;
 
-const stateTemplate: JsonObject = {
-  version: 2,
-  goal: "",
-  mode: "clarification",
-  phase: "requirements",
-  executionLock: false,
-  canAskUser: true,
-  currentStageId: null,
-  currentTaskId: null,
-  planIteration: 1,
-  prdIteration: 1,
-  acceptanceMatrixIteration: 1,
-  objectiveAuditIteration: 0,
-  stageIteration: 0,
-  repairAttemptsForCurrentTask: 0,
-  finalGoalLedgerExists: false,
-  finalGoalLedgerHash: "",
-  activePrdPath: ".supercodex/docs/PRD.md",
-  activePlanPath: ".supercodex/docs/PLAN.md",
-  activeAcceptanceMatrixPath: ".supercodex/docs/ACCEPTANCE_MATRIX.md",
-  prdCoverageStatus: "unknown",
-  planCoverageStatus: "unknown",
-  finalObjectiveAuditStatus: "not_started",
-  lastObjectiveAuditResult: null,
-  lastObjectiveAuditGapTypes: [],
-  sourceRequirementsTotal: 0,
-  sourceRequirementsMappedToPrd: 0,
-  sourceRequirementsMappedToPlan: 0,
-  sourceRequirementsPassed: 0,
-  sourceRequirementsFailed: 0,
-  sourceRequirementsUnmapped: 0,
-  lastCompletedStageId: null,
-  lastCompletedTaskId: null,
-  lastCommand: null,
-  lastGitBranch: null,
-  lastCommitHash: null,
-  lastPushStatus: null,
-  lastPrUrlOrDoc: null,
-  lastError: null,
-  done: false,
-  createdAt: "",
-  updatedAt: "",
-};
+function autoDevStateTemplate(goal: string, timestamp: string, planTasks: PlanTask[] = []): JsonObject {
+  const hasGoal = Boolean(goal.trim());
+  const completedTaskIds = planTasks.filter((task) => task.status === "done").map((task) => task.id);
+  const remainingTasks = planTasks.filter((task) => task.status !== "done");
+  const firstRemainingTask = remainingTasks[0] ?? null;
+  const hasPlanProgress = planTasks.length > 0;
+  const allPlanTasksDone = hasPlanProgress && remainingTasks.length === 0;
+  const phase = firstRemainingTask ? "PHASE_4_DEVELOPMENT" : allPlanTasksDone ? "PHASE_6_FINAL_ACCEPTANCE" : hasGoal ? "PHASE_1_PRD" : "PHASE_0_CLARIFICATION";
+  const nextAction = firstRemainingTask ? "EXECUTE_NEXT_PLAN_TASK" : allPlanTasksDone ? "RUN_FINAL_ACCEPTANCE" : hasGoal ? "START_PHASE_1_PRD" : "START_PHASE_0";
+  const clarificationClosed = hasGoal || hasPlanProgress;
+  return {
+    schema_version: "1.0",
+    cycle: 1,
+    phase,
+    decision: "IN_PROGRESS",
+    last_updated: timestamp,
+    final_goal_source: ".supercodex/FINAL_GOAL.md",
+    artifacts: {
+      final_goal: ".supercodex/FINAL_GOAL.md",
+      clarifications: ".supercodex/CLARIFICATIONS.md",
+      assumptions: ".supercodex/ASSUMPTIONS.md",
+      prd: ".supercodex/PRD.md",
+      architecture: ".supercodex/ARCHITECTURE.md",
+      plan: ".supercodex/PLAN.md",
+      traceability_matrix: ".supercodex/TRACEABILITY_MATRIX.md",
+      test_report: ".supercodex/TEST_REPORT.md",
+      code_review_report: ".supercodex/CODE_REVIEW_REPORT.md",
+      final_acceptance_report: ".supercodex/FINAL_ACCEPTANCE_REPORT.md",
+      pr_summary: ".supercodex/PR_SUMMARY.md",
+    },
+    clarification: {
+      status: clarificationClosed ? "CLOSED" : "OPEN",
+      asked_count: 0,
+      max_questions: 10,
+      pending_questions: [],
+      answered_questions: [],
+      closed_reason: clarificationClosed ? "Initial goal or existing lightweight PLAN was supplied to SuperCodex scaffold." : null,
+    },
+    plan: {
+      current_cycle: "Cycle 1",
+      current_stage: firstRemainingTask?.stageId ?? null,
+      current_task_id: firstRemainingTask?.id ?? null,
+      completed_task_ids: completedTaskIds,
+      remaining_task_ids: remainingTasks.map((task) => task.id),
+    },
+    execution: {
+      completed_work: [],
+      failed_items: [],
+      last_commands: [],
+      next_action: nextAction,
+    },
+    quality: {
+      tests_status: "NOT_RUN",
+      code_review_status: "NOT_RUN",
+      blocking_issues: [],
+    },
+    acceptance: {
+      status: "NOT_RUN",
+      decision: "PENDING",
+      remaining_gaps: [],
+    },
+    delivery: {
+      readme_updated: false,
+      git_committed: false,
+      pr_created: false,
+      pr_summary_path: null,
+    },
+  };
+}
 
 export async function ensureScaffold(projectInput: string, goal = ""): Promise<string[]> {
   const project = resolve(projectInput);
   const created: string[] = [];
 
-  await migrateLegacyProjectLayout(project, created);
   const projectAgentsPath = await ensureProjectAgentsMd(project);
   if (projectAgentsPath) {
     created.push(projectAgentsPath);
@@ -111,42 +133,9 @@ export async function ensureScaffold(projectInput: string, goal = ""): Promise<s
     }
   }
 
-  const timestamp = nowIso();
-  const statePath = join(project, ".supercodex", "state.json");
-  if (!(await pathExists(statePath))) {
-    await writeJsonAtomic(statePath, {
-      ...stateTemplate,
-      goal,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    });
-    created.push(statePath);
-  }
-
-  const lockPath = join(project, ".supercodex", "execution-lock.json");
-  if (
-    await writeTextIfMissing(
-      lockPath,
-      `${JSON.stringify(
-        {
-          executionLock: false,
-          canAskUser: true,
-          enteredAt: null,
-          reason: "Planning documents are not fully validated yet.",
-        },
-        null,
-        2,
-      )}\n`,
-    )
-  ) {
-    created.push(lockPath);
-  }
-
   const minimalFiles: Record<string, string> = {
     ".supercodex/progress.md": "# Progress\n\n",
     ".supercodex/checkpoints.md": "# Checkpoints\n\n",
-    ".supercodex/decisions.md": "# Decisions\n\n",
-    ".supercodex/assumptions.md": "# Assumptions\n\n",
     ".supercodex/recovery.md": "# Recovery\n\n",
     ".supercodex/last-error.md": "# Last Error\n\nNone.\n",
     ".supercodex/last-action.md": "# Last Action\n\nBootstrap scaffold created.\n",
@@ -158,15 +147,27 @@ export async function ensureScaffold(projectInput: string, goal = ""): Promise<s
     }
   }
 
+  const shouldDeriveStateFromPlan = await pathExists(join(project, supercodexRoot, "PLAN.md"));
   for (const doc of requiredDocs) {
-    const path = join(project, supercodexDocsRoot, doc);
+    if (doc === autoDevStateFile) {
+      continue;
+    }
+    const path = join(project, supercodexRoot, doc);
     if (await pathExists(path)) {
       continue;
     }
-    const content = doc === "PRD.md" || doc === "PLAN.md" ? planningDocStub(doc, goal) : supplementDocStub(doc, goal);
+    const content = governanceArtifactStub(doc, goal);
     if (await writeTextIfMissing(path, content)) {
       created.push(path);
     }
+  }
+
+  const timestamp = nowIso();
+  const statePath = join(project, ".supercodex", autoDevStateFile);
+  if (!(await pathExists(statePath))) {
+    const planTasks = shouldDeriveStateFromPlan ? parsePlanTasks(await readText(join(project, supercodexRoot, "PLAN.md"))) : [];
+    await writeJsonAtomic(statePath, autoDevStateTemplate(goal, timestamp, planTasks));
+    created.push(statePath);
   }
 
   await recordProgress(project, "bootstrap", "Scaffold checked; missing files were supplemented only.");
@@ -208,31 +209,30 @@ export async function ensureSupercodexGitignore(project: string): Promise<boolea
 
 export async function loadSnapshot(projectInput: string): Promise<ProjectSnapshot> {
   const project = resolve(projectInput);
-  await migrateLegacyProjectLayout(project, []);
   await ensureSupercodexGitignore(project);
-  const state = await readJson<JsonObject>(join(project, ".supercodex", "state.json"), {});
-  const backlog = await readJson<JsonObject>(join(project, ".supercodex", "backlog.json"), {});
+  const autoDevState = await readJson<JsonObject>(join(project, ".supercodex", autoDevStateFile), {});
+  const state = normalizeAutoDevState(autoDevState);
   const docsPresent: Record<string, boolean> = {};
   const missingDocs: string[] = [];
   for (const doc of requiredDocs) {
-    const present = await pathExists(join(project, supercodexDocsRoot, doc));
+    const present = doc === autoDevStateFile ? await pathExists(join(project, ".supercodex", doc)) : await pathExists(join(project, supercodexRoot, doc));
     docsPresent[doc] = present;
     if (!present) {
       missingDocs.push(doc);
     }
   }
-  const planTasks = parsePlanTasks(await readText(join(project, supercodexDocsRoot, "PLAN.md")));
+  const planTasks = parsePlanTasks(await readText(join(project, supercodexRoot, "PLAN.md")));
   const supervisorSession = await loadRecoverableSupervisorSession(project);
   return {
     project,
     state,
-    backlog,
+    autoDevState,
     docsPresent,
     missingDocs,
     planTasks,
     supervisorSession,
-    done: Boolean(state.done),
-    executionLocked: Boolean(state.executionLock),
+    done: autoDevStateDelivered(autoDevState, docsPresent),
+    phaseLocked: autoDevPhaseLocked(autoDevState),
   };
 }
 
@@ -246,7 +246,7 @@ export function parsePlanTasks(planText: string): PlanTask[] {
   const tasks: PlanTask[] = [];
   let currentStage: string | null = null;
   const stageRe = /^#{2,6}\s+.*?\bStage\s+([A-Za-z0-9_-]+)/i;
-  const taskRe = /^\s*-\s+\[(?<mark>[ xX])\]\s*Task\s+(?<id>[A-Za-z0-9_-]+)\s*:\s*(?<title>.+?)\s*$/;
+  const taskRe = /^\s*-\s+\[(?<mark>[ xX])\]\s*Task\s+(?<id>[A-Za-z0-9_.-]+)\s*:\s*(?<title>.+?)\s*$/;
   for (const line of planText.split(/\r?\n/)) {
     const stageMatch = line.match(stageRe);
     if (stageMatch?.[1]) {
@@ -271,36 +271,28 @@ export function parsePlanTasks(planText: string): PlanTask[] {
 
 export function chooseNextWork(snapshot: ProjectSnapshot): WorkItem {
   if (snapshot.done) {
-    if (!finalObjectiveAuditPassed(snapshot)) {
-      return {
-        kind: "stage_gate",
-        title: "运行 Final Objective Audit 后再确认最终交付",
-        reason: ".supercodex/state.json.done is true, but Final Goal Ledger / Final Objective Audit evidence is missing or not passed.",
-        source: "objective-audit",
-      };
-    }
-    return { kind: "done", title: "Project marked done", reason: ".supercodex/state.json.done is true", source: "state" };
+    return { kind: "done", title: "Project delivered", reason: ".supercodex/AUTO_DEV_STATE.json decision is DELIVERED, final acceptance passed, and Phase 7 delivery/PR closure is recorded.", source: "auto-dev-state" };
   }
-  const criticalMissing = snapshot.missingDocs.filter((doc) => doc === "PRD.md" || doc === "PLAN.md");
+  const criticalMissing = snapshot.missingDocs.filter((doc) => doc === autoDevStateFile || doc === "FINAL_GOAL.md" || doc === "PLAN.md");
   if (criticalMissing.length > 0) {
     return {
       kind: "supplement_docs",
-      title: "补齐缺失的 PRD/PLAN 文档",
-      reason: `Missing critical planning documents: ${criticalMissing.join(", ")}`,
+      title: "补齐 AGENTS.md 关键治理产物",
+      reason: `Missing critical governance artifacts: ${criticalMissing.join(", ")}`,
       source: "docs",
     };
   }
   if (snapshot.missingDocs.length > 0) {
     return {
       kind: "supplement_docs",
-      title: "补齐缺失的非核心状态文档",
-      reason: `Missing supplemental documents: ${snapshot.missingDocs.join(", ")}`,
+      title: "补齐 AGENTS.md 治理产物",
+      reason: `Missing governance artifacts: ${snapshot.missingDocs.join(", ")}`,
       source: "docs",
     };
   }
-  const backlogWork = chooseFromBacklog(snapshot.backlog, snapshot.state);
-  if (backlogWork) {
-    return backlogWork;
+  const autoWork = chooseFromAutoDevState(snapshot.autoDevState, snapshot.planTasks, snapshot.docsPresent);
+  if (autoWork) {
+    return autoWork;
   }
   for (const task of snapshot.planTasks) {
     if (task.status !== "done") {
@@ -309,7 +301,7 @@ export function chooseNextWork(snapshot: ProjectSnapshot): WorkItem {
         title: task.title,
         stageId: task.stageId,
         taskId: task.id,
-        reason: "First unchecked task in .supercodex/docs/PLAN.md",
+        reason: "First unchecked task in .supercodex/PLAN.md",
         source: "plan",
       };
     }
@@ -317,91 +309,167 @@ export function chooseNextWork(snapshot: ProjectSnapshot): WorkItem {
   if (snapshot.planTasks.length > 0) {
     return {
       kind: "stage_gate",
-      title: "执行剩余 Stage Gate 或最终审查",
-      reason: "All parsed PLAN tasks are checked but final done flag is not true.",
-      source: "plan",
+      title: "进入 Phase 6 最终目标验收",
+      reason: "All parsed PLAN tasks are checked; AGENTS.md requires FINAL_ACCEPTANCE_REPORT before delivery.",
+      source: "final-acceptance",
     };
   }
   return {
     kind: "bootstrap",
-    title: "建立外部循环器项目规划",
-    reason: "No actionable backlog or PLAN tasks were found.",
+    title: "建立 AGENTS.md 轻量治理规划",
+    reason: "No actionable AUTO_DEV_STATE or PLAN tasks were found.",
     source: "bootstrap",
   };
 }
 
-function finalObjectiveAuditPassed(snapshot: ProjectSnapshot): boolean {
-  return (
-    snapshot.docsPresent["FINAL_GOAL_LEDGER.md"] === true &&
-    snapshot.docsPresent["FINAL_OBJECTIVE_AUDIT.md"] === true &&
-    snapshot.state.finalObjectiveAuditStatus === "passed"
-  );
-}
-
-export function chooseFromBacklog(backlog: JsonObject, state: JsonObject = {}): WorkItem | null {
-  const stages = Array.isArray(backlog.stages) ? backlog.stages : null;
-  if (!stages) {
+function chooseFromAutoDevState(autoDevState: JsonObject, planTasks: PlanTask[], docsPresent: Record<string, boolean>): WorkItem | null {
+  if (!Object.keys(autoDevState).length) {
     return null;
   }
-  const preferredStageId = normalizeOptionalStageId(
-    state.currentStageId ?? state.currentStage ?? state.phase,
-  );
-  const doneTasks = new Set<string>();
-  for (const stage of stages) {
-    if (!isObject(stage) || !Array.isArray(stage.tasks)) {
-      continue;
-    }
-    for (const task of stage.tasks) {
-      if (isObject(task) && isDoneStatus(task.status) && typeof task.id === "string") {
-        doneTasks.add(task.id);
-      }
-    }
+
+  const phase = stringValue(autoDevState.phase, "PHASE_0_CLARIFICATION");
+  const decision = stringValue(autoDevState.decision, "IN_PROGRESS");
+  const clarification = objectValue(autoDevState.clarification);
+  const plan = objectValue(autoDevState.plan);
+  const execution = objectValue(autoDevState.execution);
+  const acceptance = objectValue(autoDevState.acceptance);
+  const currentTaskId = stringOrNull(plan.current_task_id);
+  const currentStage = normalizeOptionalStageId(plan.current_stage);
+  const completed = new Set(stringArray(plan.completed_task_ids));
+  const remaining = stringArray(plan.remaining_task_ids).filter((id) => !completed.has(id));
+  const nextAction = stringValue(execution.next_action, "");
+
+  if (decision === "DELIVERED" && !autoDevStateDelivered(autoDevState, docsPresent)) {
+    return {
+      kind: "stage_gate",
+      title: "补齐最终验收与交付闭环证据",
+      reason: "AUTO_DEV_STATE decision is DELIVERED, but final acceptance or delivery/PR closure evidence is incomplete.",
+      source: "auto-dev-state",
+    };
   }
-  for (const stage of orderStagesForResume(stages, preferredStageId)) {
-    if (!isObject(stage)) {
-      continue;
-    }
-    const stageId = typeof stage.id === "string" ? stage.id : "";
-    if (isDoneStatus(stage.status)) {
-      continue;
-    }
-    const tasks = Array.isArray(stage.tasks) ? stage.tasks : [];
-    for (const task of tasks) {
-      if (!isObject(task) || isDoneStatus(task.status)) {
-        continue;
-      }
-      const deps = Array.isArray(task.dependencies) ? task.dependencies : [];
-      if (deps.length > 0 && !deps.every((dep) => typeof dep === "string" && doneTasks.has(dep))) {
-        continue;
-      }
+
+  if (decision === "PASS_READY_TO_DELIVER" || acceptancePassed(autoDevState)) {
+    return {
+      kind: "stage_gate",
+      title: "执行 Phase 7 最终交付与 PR",
+      reason: "Final acceptance passed; AGENTS.md requires README/Git/PR_SUMMARY delivery closure.",
+      source: "auto-dev-state",
+    };
+  }
+
+  if (decision === "FAIL_CONTINUE_NEXT_CYCLE" || acceptanceFailed(autoDevState)) {
+    return {
+      kind: "stage_gate",
+      title: "根据最终验收失败创建下一 Cycle",
+      reason: "FINAL_ACCEPTANCE_REPORT is failed; update PRD, architecture, PLAN, and TRACEABILITY_MATRIX before continuing.",
+      source: "auto-dev-state",
+    };
+  }
+
+  if (stringValue(clarification.status, "") === "WAITING_FOR_USER") {
+    return {
+      kind: "stage_gate",
+      title: "处理 Phase 0 需求澄清回复",
+      reason: "clarification.status is WAITING_FOR_USER; only Phase 0 may wait for or process a user clarification.",
+      source: "auto-dev-state",
+    };
+  }
+
+  if (currentTaskId) {
+    return {
+      kind: "task",
+      title: `执行 Plan task ${currentTaskId}`,
+      stageId: currentStage ?? inferStageFromTaskId(currentTaskId),
+      taskId: currentTaskId,
+      reason: "AUTO_DEV_STATE.json plan.current_task_id",
+      source: "auto-dev-state",
+    };
+  }
+
+  if (remaining.length > 0) {
+    const taskId = remaining[0]!;
+    return {
+      kind: "task",
+      title: `执行 Plan task ${taskId}`,
+      stageId: currentStage ?? inferStageFromTaskId(taskId),
+      taskId,
+      reason: "AUTO_DEV_STATE.json plan.remaining_task_ids",
+      source: "auto-dev-state",
+    };
+  }
+
+  if (phase === "PHASE_4_DEVELOPMENT" && planTasks.some((task) => task.status !== "done")) {
+    return null;
+  }
+
+  if (nextAction) {
+    return {
+      kind: phase === "PHASE_4_DEVELOPMENT" ? "task" : "stage_gate",
+      title: nextActionTitle(nextAction, phase),
+      stageId: currentStage,
+      reason: `AUTO_DEV_STATE.json execution.next_action=${nextAction}`,
+      source: "auto-dev-state",
+    };
+  }
+
+  return phaseWork(phase, currentStage);
+}
+
+function phaseWork(phase: string, stageId: string | null): WorkItem | null {
+  switch (phase) {
+    case "PHASE_0_CLARIFICATION":
       return {
-        kind: "task",
-        title: String(task.title ?? task.id ?? "Untitled task"),
-        stageId: stageId || null,
-        taskId: String(task.id ?? ""),
-        reason: "Next dependency-satisfied task in .supercodex/backlog.json",
-        source: "backlog",
+        kind: "stage_gate",
+        title: "Phase 0 需求澄清与目标锁定",
+        reason: "AUTO_DEV_STATE phase is PHASE_0_CLARIFICATION.",
+        source: "auto-dev-state",
       };
-    }
-    if (tasks.length > 0 && tasks.every((task) => isObject(task) && isDoneStatus(task.status))) {
-      const gate = isObject(stage.gate) ? stage.gate : {};
-      const gateComplete =
-        Boolean(gate.testsPassed) &&
-        Boolean(gate.reviewPassed) &&
-        Boolean(gate.gapReviewed) &&
-        Boolean(gate.prCreatedOrDocumented);
-      if (!gateComplete || !isDoneStatus(stage.status)) {
-        return {
-          kind: "stage_gate",
-          title: `完成 ${stageId} 的 Stage Gate`,
-          stageId: stageId || null,
-          reason: "Stage tasks are done but gate/status is incomplete.",
-          source: "backlog",
-        };
-      }
-    }
+    case "PHASE_1_PRD":
+      return {
+        kind: "stage_gate",
+        title: "Phase 1 编写或更新 PRD",
+        reason: "AUTO_DEV_STATE phase is PHASE_1_PRD.",
+        source: "auto-dev-state",
+      };
+    case "PHASE_2_ARCHITECTURE":
+      return {
+        kind: "stage_gate",
+        title: "Phase 2 编写或更新架构设计",
+        reason: "AUTO_DEV_STATE phase is PHASE_2_ARCHITECTURE.",
+        source: "auto-dev-state",
+      };
+    case "PHASE_3_PLAN":
+      return {
+        kind: "stage_gate",
+        title: "Phase 3 制定或更新 Plan 与追踪矩阵",
+        reason: "AUTO_DEV_STATE phase is PHASE_3_PLAN.",
+        source: "auto-dev-state",
+      };
+    case "PHASE_5_TEST_REVIEW_REPAIR":
+      return {
+        kind: "stage_gate",
+        title: "Phase 5 测试、审查与修复",
+        stageId,
+        reason: "AUTO_DEV_STATE phase is PHASE_5_TEST_REVIEW_REPAIR.",
+        source: "auto-dev-state",
+      };
+    case "PHASE_6_FINAL_ACCEPTANCE":
+      return {
+        kind: "stage_gate",
+        title: "Phase 6 最终目标验收",
+        reason: "AUTO_DEV_STATE phase is PHASE_6_FINAL_ACCEPTANCE.",
+        source: "auto-dev-state",
+      };
+    case "PHASE_7_DELIVERY_PR":
+      return {
+        kind: "stage_gate",
+        title: "Phase 7 最终交付与 PR",
+        reason: "AUTO_DEV_STATE phase is PHASE_7_DELIVERY_PR.",
+        source: "auto-dev-state",
+      };
+    default:
+      return null;
   }
-  return null;
 }
 
 export function supervisorSessionPath(project: string, runId?: string | null): string {
@@ -481,7 +549,7 @@ export async function recordCheckpoint(
       `- 下一步：${input.nextStep}\n` +
       `- 最近命令：${input.lastCommand ?? "none"}\n` +
       `- 最近风险：${input.risk}\n` +
-      "- 恢复方式：重新运行 `supercodex run --project <path>`，循环器会读取 .supercodex 与 .supercodex/docs 后继续。\n\n",
+      "- 恢复方式：重新运行 `supercodex run --project <path>`，循环器会读取 .supercodex/AUTO_DEV_STATE.json 与轻量治理产物后继续。\n\n",
     project,
   );
 }
@@ -495,7 +563,7 @@ export function normalizeStageId(value: string): string {
 }
 
 export function inferStageFromTaskId(taskId: string): string | null {
-  const match = taskId.match(/^S(\d+)-T\d+/i) ?? taskId.match(/^stage-(\d+)-task-\d+/i);
+  const match = taskId.match(/^S(\d+)-T\d+/i) ?? taskId.match(/^stage-(\d+)-task-\d+/i) ?? taskId.match(/^(\d+)\.\d+/);
   return match?.[1] ? `stage-${match[1]}` : null;
 }
 
@@ -505,18 +573,6 @@ export function normalizeOptionalStageId(value: unknown): string | null {
   }
   const match = value.match(/stage[-_\s]*(\d+)/i);
   return match?.[1] ? `stage-${match[1]}` : normalizeStageId(value);
-}
-
-export function isDoneStatus(value: unknown): boolean {
-  return new Set(["done", "completed", "complete", "passed"]).has(String(value ?? "").trim().toLowerCase());
-}
-
-function orderStagesForResume(stages: unknown[], preferredStageId: string | null): unknown[] {
-  if (!preferredStageId) {
-    return stages;
-  }
-  const index = stages.findIndex((stage) => isObject(stage) && String(stage.id ?? "").toLowerCase() === preferredStageId);
-  return index >= 0 ? [...stages.slice(index), ...stages.slice(0, index)] : stages;
 }
 
 function normalizeGitignoreRule(value: string): string {
@@ -542,61 +598,114 @@ function normalizeRuntimeValue(project: string, value: unknown): unknown {
 }
 
 function normalizeRuntimePathString(project: string, value: string): string {
-  const legacyAgent = join(project, ".agent");
-  const nextRoot = join(project, ".supercodex");
-  return value
-    .replaceAll(legacyAgent, nextRoot)
-    .replaceAll(legacyAgent.replaceAll("\\", "/"), nextRoot.replaceAll("\\", "/"))
-    .replaceAll(".supercodex\\logs\\supervisor", ".supercodex\\logs\\supercodex")
-    .replaceAll(".supercodex/logs/supervisor", ".supercodex/logs/supercodex")
-    .replaceAll(".supercodex\\supervisor", ".supercodex\\runtime")
-    .replaceAll(".supercodex/supervisor", ".supercodex/runtime");
+  void project;
+  return value;
 }
 
-async function migrateLegacyProjectLayout(project: string, created: string[]): Promise<void> {
-  const nextRoot = join(project, supercodexRoot);
-  const legacyAgent = join(project, legacyAgentRoot);
-  if (!(await pathExists(nextRoot)) && (await pathExists(legacyAgent))) {
-    await rename(legacyAgent, nextRoot);
-    created.push(nextRoot);
+function governanceArtifactStub(doc: string, goal: string): string {
+  switch (doc) {
+    case "FINAL_GOAL.md":
+      return `# FINAL_GOAL
+
+## 用户原始目标
+${goal || "Not provided yet."}
+
+## 结构化最终目标
+- 待 Phase 0 根据用户原始目标补全。
+
+## 明确不做的内容
+- 未声明。
+
+## 验收标准
+- 待 PRD 与 TRACEABILITY_MATRIX 细化。
+
+## 风险与边界
+- 待架构阶段补全。
+`;
+    case "CLARIFICATIONS.md":
+      return "# CLARIFICATIONS\n\nNo blocking clarification has been recorded yet.\n";
+    case "ASSUMPTIONS.md":
+      return "# ASSUMPTIONS\n\nNo assumptions have been recorded yet.\n";
+    case "TRACEABILITY_MATRIX.md":
+      return `# TRACEABILITY_MATRIX
+
+| Final Goal | Acceptance Criteria | PRD Requirement | Architecture Component | Plan Task | Test/Review Evidence | Status |
+|---|---|---|---|---|---|---|
+`;
+    case "TEST_REPORT.md":
+      return "# TEST_REPORT\n\n## Commands Executed\n\n## Failures and Fixes\n\n## Coverage Against Final Goal\n";
+    case "CODE_REVIEW_REPORT.md":
+      return "# CODE_REVIEW_REPORT\n\nNo review has been recorded yet.\n";
+    case "FINAL_ACCEPTANCE_REPORT.md":
+      return "# FINAL_ACCEPTANCE_REPORT\n\n## Final Goal Coverage\n\n## PRD Coverage\n\n## Test Summary\n\n## Code Review Summary\n\n## Remaining Gaps\n\n## Decision\n- PENDING\n";
+    case "PR_SUMMARY.md":
+      return "# PR_SUMMARY\n\n## Title\n\n## Summary\n\n## Changes\n\n## Tests\n\n## Final Acceptance\n\n## PR Status\n- Created: no\n- Reason if no: Not attempted yet.\n";
+    case "ARCHITECTURE.md":
+    case "PRD.md":
+      return `# ${doc.slice(0, -3)}
+
+This file was created by SuperCodex as a missing AGENTS.md governance artifact.
+It should be filled by the active Codex work cycle without recreating the old heavy docs tree.
+
+Goal: ${goal || "Not provided yet."}
+`;
+    case "PLAN.md":
+      return `# PLAN
+
+Goal: ${goal || "Not provided yet."}
+
+## Cycle 1
+
+### Milestone 1: Foundation Capability Closure
+- Goal: Fill this milestone from PRD and ARCHITECTURE.
+- Stages: Stage 1-3
+- Commit boundary: Create a milestone commit after all included stages pass their checks.
+- Push policy: Push if a remote is available; otherwise record the blocker or fallback reason.
+- Thread boundary: Continue in the same plan-cycle thread.
+
+#### Stage 1: Scope and Architecture Alignment
+- [ ] Task 1.1: Align PRD, architecture, traceability, and the first implementation slice
+  - Goal: Define a concrete, verifiable slice for this milestone.
+  - Files: .supercodex/PRD.md, .supercodex/ARCHITECTURE.md, .supercodex/TRACEABILITY_MATRIX.md
+  - Steps: Map final-goal requirements to the milestone stages and implementation files.
+  - Verify: TRACEABILITY_MATRIX links each planned task to acceptance evidence.
+
+#### Stage 2: Implementation Slice
+- [ ] Task 2.1: Implement the milestone capability slice
+  - Goal: Deliver meaningful user-visible or system capability.
+  - Files: To be filled by Phase 3 planning.
+  - Steps: To be filled by Phase 3 planning.
+  - Verify: To be filled by Phase 3 planning.
+
+#### Stage 3: Milestone Quality Closure
+- [ ] Task 3.1: Close tests, review, traceability, and state for this milestone
+  - Goal: Prove this milestone is stable before the intermediate commit.
+  - Files: .supercodex/TEST_REPORT.md, .supercodex/CODE_REVIEW_REPORT.md, .supercodex/AUTO_DEV_STATE.json, .supercodex/PLAN.md
+  - Steps: Run relevant checks, repair failures, update reports and state.
+  - Verify: Reports contain evidence and AUTO_DEV_STATE points to the next action.
+
+#### Milestone Gate
+- [ ] Relevant tests / lint / typecheck / build passed, or blockers recorded
+- [ ] TEST_REPORT / CODE_REVIEW_REPORT / TRACEABILITY_MATRIX updated
+- [ ] PLAN / AUTO_DEV_STATE updated
+- [ ] Milestone commit created
+- [ ] Push attempted if remote is available, or fallback reason recorded
+
+### Milestone 2: Next Capability Closure
+- Goal: Add the next group of stages after Milestone 1 is clear.
+- Stages: Stage 4-7
+- Commit boundary: Create a milestone commit after all included stages pass their checks.
+
+#### Stage 4: Next Implementation Slice
+- [ ] Task 4.1: Define and implement the next PRD-backed capability slice
+  - Goal: To be filled by Phase 3 planning.
+  - Files: To be filled by Phase 3 planning.
+  - Steps: To be filled by Phase 3 planning.
+  - Verify: To be filled by Phase 3 planning.
+`;
+    default:
+      return `# ${doc.replaceAll("_", " ").replace(/\.md$/i, "")}\n\nCreated by SuperCodex AGENTS.md scaffold.\n`;
   }
-
-  const nextDocs = join(project, supercodexDocsRoot);
-  const legacyDocs = join(project, legacyDocsRoot);
-  if (!(await pathExists(nextDocs)) && (await pathExists(legacyDocs))) {
-    await mkdir(nextRoot, { recursive: true });
-    await rename(legacyDocs, nextDocs);
-    created.push(nextDocs);
-  }
-
-  const nextRuntime = join(project, supercodexRoot, "runtime");
-  const legacyRuntime = join(project, supercodexRoot, "supervisor");
-  if (!(await pathExists(nextRuntime)) && (await pathExists(legacyRuntime))) {
-    await rename(legacyRuntime, nextRuntime);
-    created.push(nextRuntime);
-  }
-
-  const nextLogs = join(project, supercodexRoot, "logs", "supercodex");
-  const legacyLogs = join(project, supercodexRoot, "logs", "supervisor");
-  if (!(await pathExists(nextLogs)) && (await pathExists(legacyLogs))) {
-    await mkdir(join(project, supercodexRoot, "logs"), { recursive: true });
-    await rename(legacyLogs, nextLogs);
-    created.push(nextLogs);
-  }
-}
-
-function planningDocStub(doc: string, goal: string): string {
-  const title = basename(doc, ".md");
-  return `# ${title}\n\nThis file was created by supercodex as a missing planning artifact.\nIf an existing project already has PRD or PLAN content elsewhere, move or merge it here; SuperCodex will not overwrite existing planning documents.\n\nGoal: ${
-    goal || "Not provided yet."
-  }\n`;
-}
-
-function supplementDocStub(doc: string, goal: string): string {
-  const title = basename(doc, ".md").replaceAll("_", " ");
-  return `# ${title}\n\nSupplemental placeholder created because the project was missing this required artifact.\nDo not treat this as a replacement for existing PRD or PLAN content.\n\nGoal: ${
-    goal || "Inherited from existing project state."
-  }\n`;
 }
 
 async function readProjectAgentsTemplate(): Promise<string> {
@@ -621,24 +730,115 @@ function projectAgentsTemplateCandidates(): string[] {
 function fallbackProjectAgentsTemplate(): string {
   return `# AGENTS.md - SuperCodex Project Instructions
 
-This project is managed by SuperCodex. Before doing work, Codex must read the project state, preserve existing Final Goal Ledger / PRD / PLAN / backlog / checkpoints, inspect git status, and resume from the next unfinished task instead of restarting from scratch.
+This project is managed by SuperCodex using the lightweight AGENTS.md governance protocol. Before doing work, Codex must read \`.supercodex/AUTO_DEV_STATE.json\`, \`.supercodex/FINAL_GOAL.md\`, \`.supercodex/PLAN.md\`, \`.supercodex/TRACEABILITY_MATRIX.md\`, recent reports, checkpoints, and git status, then continue from the recorded phase/task instead of restarting from scratch.
 
-Required durable state:
+Use available sub-agent, worker, explorer, tester, or reviewer capabilities when they materially help: independent exploration, disjoint implementation ownership, repeated failure analysis, parallel testing, code review, security review, or final-goal coverage review. Do not use them for tiny tasks or overlapping write scopes. The main agent remains responsible for integration, verification, and governance updates.
 
-- \`.supercodex/state.json\`
-- \`.supercodex/backlog.json\`
-- \`.supercodex/checkpoints.md\`
-- \`.supercodex/docs/FINAL_GOAL_LEDGER.md\`
-- \`.supercodex/docs/PRD.md\`
-- \`.supercodex/docs/PLAN.md\`
-- \`.supercodex/docs/ACCEPTANCE_MATRIX.md\`
-- \`.supercodex/docs/GAP_REPORT.md\`
-- \`.supercodex/docs/FINAL_OBJECTIVE_AUDIT.md\`
+Required durable governance artifacts:
 
-The Final Goal Ledger is the root source of truth. Existing PRD and PLAN should not be replaced from scratch, but if coverage review or Final Objective Audit proves that they do not satisfy the ledger, archive the old active document, revise the required artifacts, update the backlog/checkpoint, and continue.
+- \`.supercodex/AUTO_DEV_STATE.json\`
+- \`.supercodex/FINAL_GOAL.md\`
+- \`.supercodex/CLARIFICATIONS.md\`
+- \`.supercodex/ASSUMPTIONS.md\`
+- \`.supercodex/PRD.md\`
+- \`.supercodex/ARCHITECTURE.md\`
+- \`.supercodex/PLAN.md\`
+- \`.supercodex/TRACEABILITY_MATRIX.md\`
+- \`.supercodex/TEST_REPORT.md\`
+- \`.supercodex/CODE_REVIEW_REPORT.md\`
+- \`.supercodex/FINAL_ACCEPTANCE_REPORT.md\`
+- \`.supercodex/PR_SUMMARY.md\`
 
-If execution is blocked by external credentials, network, or remote Git permission, record the blocker in \`.supercodex/docs/BLOCKERS.md\` and continue all unblocked local work. Do not claim tests, build, push, PR, or final delivery succeeded unless they were actually run and recorded. Do not treat completed PLAN tasks, passing tests, commits, pushes, or PR docs as final delivery without a passed Final Objective Audit.
+\`.supercodex/AUTO_DEV_STATE.json\` is the machine-readable scheduling source. Markdown files are the human-readable goal, plan, evidence, review, acceptance, and PR artifacts. Do not recreate old heavy docs trees unless the user explicitly asks for them.
+
+Only Phase 0 may ask the user blocking clarification questions. After Phase 0, fix errors autonomously, keep AUTO_DEV_STATE valid JSON through atomic writes, and do not claim delivery until FINAL_ACCEPTANCE_REPORT says PASS and the delivery/PR step is recorded.
+
+\`.supercodex/PLAN.md\` should group Stage tasks inside Cycle and Milestone sections. Stage remains the execution unit; Milestone is the intermediate commit/push boundary. Do not create a fresh Codex thread for Stage changes, Milestone commits, pushes, or PR-document updates. Phase 7 still owns the final commit/PR closure after final acceptance passes.
 `;
+}
+
+function normalizeAutoDevState(autoDevState: JsonObject): JsonObject {
+  const phase = stringValue(autoDevState.phase, "PHASE_0_CLARIFICATION");
+  const plan = objectValue(autoDevState.plan);
+  return {
+    ...autoDevState,
+    mode: modeFromPhase(phase),
+    phase,
+    currentStageId: normalizeOptionalStageId(plan.current_stage),
+    currentTaskId: stringOrNull(plan.current_task_id),
+    phaseLocked: autoDevPhaseLocked(autoDevState),
+    done: false,
+  };
+}
+
+function autoDevPhaseLocked(autoDevState: JsonObject): boolean {
+  const phase = stringValue(autoDevState.phase, "PHASE_0_CLARIFICATION");
+  const clarification = objectValue(autoDevState.clarification);
+  return phase !== "PHASE_0_CLARIFICATION" || stringValue(clarification.status, "") === "CLOSED";
+}
+
+function autoDevStateDelivered(autoDevState: JsonObject, docsPresent: Record<string, boolean>): boolean {
+  const delivery = objectValue(autoDevState.delivery);
+  const prClosed = Boolean(delivery.pr_created) || Boolean(stringOrNull(delivery.pr_summary_path));
+  return (
+    stringValue(autoDevState.decision, "") === "DELIVERED" &&
+    Boolean(docsPresent["FINAL_ACCEPTANCE_REPORT.md"]) &&
+    Boolean(docsPresent["PR_SUMMARY.md"]) &&
+    acceptancePassed(autoDevState) &&
+    Boolean(delivery.readme_updated) &&
+    Boolean(delivery.git_committed) &&
+    prClosed
+  );
+}
+
+function acceptancePassed(autoDevState: JsonObject): boolean {
+  const acceptance = objectValue(autoDevState.acceptance);
+  return new Set(["PASS", "PASSED"]).has(stringValue(acceptance.decision, "")) || new Set(["PASS", "PASSED"]).has(stringValue(acceptance.status, ""));
+}
+
+function acceptanceFailed(autoDevState: JsonObject): boolean {
+  const acceptance = objectValue(autoDevState.acceptance);
+  return new Set(["FAIL", "FAILED"]).has(stringValue(acceptance.decision, "")) || new Set(["FAIL", "FAILED"]).has(stringValue(acceptance.status, ""));
+}
+
+function nextActionTitle(nextAction: string, phase: string): string {
+  const cleaned = nextAction.replaceAll("_", " ").toLowerCase();
+  return `执行 ${phase}: ${cleaned}`;
+}
+
+function modeFromPhase(phase: string): string {
+  switch (phase) {
+    case "PHASE_0_CLARIFICATION":
+      return "clarification";
+    case "PHASE_1_PRD":
+    case "PHASE_2_ARCHITECTURE":
+    case "PHASE_3_PLAN":
+      return "planning";
+    case "PHASE_5_TEST_REVIEW_REPAIR":
+      return "repair";
+    case "PHASE_6_FINAL_ACCEPTANCE":
+      return "review";
+    case "PHASE_7_DELIVERY_PR":
+      return "delivery";
+    default:
+      return "execution";
+  }
+}
+
+function objectValue(value: unknown): JsonObject {
+  return isObject(value) ? value : {};
+}
+
+function stringValue(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).map((item) => item.trim()) : [];
 }
 
 function isObject(value: unknown): value is JsonObject {

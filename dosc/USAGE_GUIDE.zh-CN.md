@@ -2,7 +2,7 @@
 
 这份指南面向实际使用，不是 `.supercodex` 内部交付记录。它只说明当前版本怎么安装、启动、续跑、切 session、切权限、处理交互请求和排查常见问题。
 
-当前版本：`0.1.0`（0.1 版本）。许可证：MIT。
+当前版本：`0.11.0`（0.11 版本）。许可证：MIT。
 
 ## 1. 先确认你装的是当前版本
 
@@ -35,7 +35,34 @@ supercodex doctor --project C:\supercodex
 codex app-server --help
 ```
 
-## 2. 在目标项目中启动
+## 2. 卸载
+
+如果你是通过本仓库 `npm link` 安装的，移除全局命令：
+
+```powershell
+npm unlink -g supercodex
+```
+
+如果你安装的是全局发布包，使用：
+
+```powershell
+npm uninstall -g supercodex
+```
+
+可选：清理 SuperCodex 仓库里的本地构建和依赖：
+
+```powershell
+cd C:\supercodex
+Remove-Item -Recurse -Force .\dist, .\node_modules
+```
+
+目标项目中的运行状态位于 `.supercodex/`。只有在不再需要续跑状态、报告、checkpoint 或日志时再删除：
+
+```powershell
+Remove-Item -Recurse -Force .\.supercodex
+```
+
+## 3. 在目标项目中启动
 
 进入目标项目目录：
 
@@ -46,7 +73,7 @@ supercodex
 
 启动后你会进入 OpenTUI 全屏界面。第一次使用某个项目时，可以直接输入需求。已有 `.supercodex` 状态的项目，建议先用 `/status` 看当前状态，再用 `/start` 续跑。
 
-## 3. 最重要的 session 规则
+## 4. 最重要的 session 规则
 
 ### `/start` 是续跑
 
@@ -66,7 +93,7 @@ supercodex
 
 当上次 SuperCodex 因为终端关闭、进程退出、机器重启或意外中断停止时，本版本会按这个顺序恢复：
 
-1. 读取当前项目 `.supercodex/state.json`、`backlog.json` 和文档状态。
+1. 读取当前项目 `.supercodex/AUTO_DEV_STATE.json`、`FINAL_GOAL.md`、`PLAN.md`、`TRACEABILITY_MATRIX.md` 和最近报告。
 2. 读取对应 run 的 `session.json`。
 3. 如果进程是在 Codex turn 运行中被关掉，读取 `runtime.json` 里保存的 active thread。
 4. 如果找到可恢复 thread，调用 Codex app-server 的 `thread/resume`。
@@ -82,10 +109,10 @@ supercodex
 - 上次是 dry-run。
 - 上次失败类型不可恢复。
 - 你执行过 `/fresh-next`。
-- 当前要做的 Stage 和保存 thread 的 Stage 不一致。
+- 当前 PLAN 已全部完成，下一步是全项目 Final Acceptance / PRD / Architecture / PLAN 审查，并在需要时创建下一 Cycle。
 - 同一个 thread 连续失败次数达到限制。
 
-这种行为是为了防止旧上下文污染新阶段，不是 session 丢失。
+active PLAN 内部的 Stage 或 phase 变化会复用同一个 Codex thread；Milestone 完成可以创建阶段性 commit/push，但仍然留在同一个 plan-cycle thread，也不能替代 Phase 7 的最终 PR 闭环。fresh thread 的正常边界是 PLAN 完成后的全局审查，而不是 Stage Gate。这不是 session 丢失。
 
 `--max-retries` 不再表示普通可恢复错误失败几次就停。对上下文窗口错误等普通可恢复 app-server 错误，它表示达到阈值后升级恢复策略，默认 10 次，强制 fresh Codex thread 并继续运行；只有不可恢复错误才会按这个阈值停止。
 
@@ -115,7 +142,7 @@ supercodex
 
 `/new` 会创建新的 SuperCodex run 和新的 Codex thread。`/clear` 是 `/new` 的别名。
 
-## 4. 推荐日常流程
+## 5. 推荐日常流程
 
 ### 新项目
 
@@ -177,7 +204,7 @@ supercodex
 /new 只检查 README 是否和当前实现一致
 ```
 
-## 5. TUI 操作
+## 6. TUI 操作
 
 常用键：
 
@@ -198,7 +225,7 @@ supercodex
 
 命令输出和文件读取不会把整个屏幕刷满；完整原文可以去 `.supercodex/logs/supercodex/` 或 Codex session JSONL 查看。
 
-## 6. 权限设置
+## 7. 权限设置
 
 TUI 主权限只有三档：
 
@@ -228,7 +255,7 @@ TUI 主权限只有三档：
 
 `/permissions`、`/sandbox` 和 `/approval` 的选择面板支持 `Up` / `Down` 和 `Enter` 键盘操作。
 
-## 7. 模型、思考强度和 auth
+## 8. 模型、思考强度和 auth
 
 ```text
 /model gpt-5.5
@@ -258,7 +285,7 @@ supercodex auth reset-limits
 C:\Users\<you>\.supercodex\codex-auth
 ```
 
-## 8. 处理 Codex 请求
+## 9. 处理 Codex 请求
 
 当 Codex CLI 通过 app-server 请求命令执行审批、文件修改审批、权限提升、用户输入或 MCP elicitation 时，SuperCodex 会捕获这个请求，并用和命令面板、Esc 停止确认相同的 `PickerOverlay` 选择面板显示。
 
@@ -284,7 +311,7 @@ C:\Users\<you>\.supercodex\codex-auth
 
 自由文本类 Codex 询问和 MCP 表单仍可用 `/answer <text-or-json>` 回答。
 
-## 9. 非 TUI 用法
+## 10. 非 TUI 用法
 
 检查状态：
 
@@ -322,7 +349,7 @@ supercodex attach --project C:\path\to\project
 supercodex interrupt --project C:\path\to\project --message "停止当前方向，先检查测试失败原因。"
 ```
 
-## 10. 常见问题
+## 11. 常见问题
 
 ### `/start` 是不是新建 session？
 
@@ -382,7 +409,7 @@ supercodex status --project C:\path\to\project
 "nextDefaultThreadAction": "thread/start"
 ```
 
-## 11. 验证当前仓库
+## 12. 验证当前仓库
 
 在 `C:\supercodex`：
 
@@ -396,7 +423,7 @@ git diff --check
 
 其中 supervisor/app-server 聚焦测试会验证：
 
-- 保存的同 Stage session 会用 `resume=true` 和原 thread。
+- 保存的 active PLAN session 会用 `resume=true` 和原 thread，即使下一项工作进入不同 Stage。
 - 意外关闭留下的 active runtime thread 可以被恢复。
 - app-server resume 参数会发送 `threadId`。
 - OpenTUI `/start` 走主动启动路径，不会误走被动 `/resume` 或 `/new`。

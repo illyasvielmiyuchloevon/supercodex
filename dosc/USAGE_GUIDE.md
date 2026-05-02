@@ -2,7 +2,7 @@
 
 This guide is for day-to-day use. It is not an internal `.supercodex` delivery log. It describes how the current app-server/OpenTUI version is installed, started, resumed, configured, and verified.
 
-Current version: `0.1.0` (0.1 release). License: MIT.
+Current version: `0.11.0` (0.11 release). License: MIT.
 
 ## 1. Install the Current Version
 
@@ -35,7 +35,34 @@ If `codexAppServerAvailable=false`, first verify that Codex CLI is installed and
 codex app-server --help
 ```
 
-## 2. Start SuperCodex in a Project
+## 2. Uninstall
+
+For a repository installed with `npm link`, remove the global command:
+
+```powershell
+npm unlink -g supercodex
+```
+
+For a packaged global install, use:
+
+```powershell
+npm uninstall -g supercodex
+```
+
+Optional local cleanup inside the SuperCodex repository:
+
+```powershell
+cd C:\supercodex
+Remove-Item -Recurse -Force .\dist, .\node_modules
+```
+
+Target-project runtime state lives in `.supercodex/`. Delete it only when you no longer need resume state, reports, checkpoints, or logs:
+
+```powershell
+Remove-Item -Recurse -Force .\.supercodex
+```
+
+## 3. Start SuperCodex in a Project
 
 Open the target project:
 
@@ -46,7 +73,7 @@ supercodex
 
 This starts the OpenTUI full-screen interface. For a new project, type the goal directly. For a project that already has `.supercodex` state, use `/status` first, then `/start` to continue saved work.
 
-## 3. Session Rules
+## 4. Session Rules
 
 ### `/start` Continues Saved Work
 
@@ -66,7 +93,7 @@ starts the saved `main` run.
 
 After an unexpected terminal close, process exit, machine restart, or interrupted SuperCodex session, this version restores in this order:
 
-1. Reads project `.supercodex/state.json`, `backlog.json`, and docs state.
+1. Reads project `.supercodex/AUTO_DEV_STATE.json`, `FINAL_GOAL.md`, `PLAN.md`, `TRACEABILITY_MATRIX.md`, and recent reports.
 2. Reads the selected run's `session.json`.
 3. If Codex was running when the process stopped, reads the active `runtime.json` thread.
 4. If a usable thread is found, calls Codex app-server `thread/resume`.
@@ -88,10 +115,10 @@ These cases can start a fresh Codex thread inside the same SuperCodex run:
 - The previous turn was a dry run.
 - The previous failure is not recoverable.
 - `/fresh-next` was requested.
-- The saved thread belongs to a different Stage than the next work item.
+- The active PLAN is exhausted and the next work is full-project Final Acceptance / PRD / Architecture / PLAN review for the next cycle.
 - The same thread failed repeatedly.
 
-This protects new stages from stale Codex context. It is not the same as losing the SuperCodex session.
+Stage or phase changes inside the active PLAN reuse the same Codex thread. Milestone completion may create an intermediate commit/push, but it still stays in the same plan-cycle thread and does not replace the Phase 7 final PR closure. The fresh-thread boundary is the PLAN-completion review, not a stage gate. It is not the same as losing the SuperCodex session.
 
 `--max-retries` does not stop ordinary recoverable failures. For ordinary recoverable app-server failures, it is the threshold for escalating recovery to a fresh Codex thread, default 10. Non-recoverable failures can still stop after the retry threshold.
 
@@ -123,7 +150,7 @@ After `/resume`:
 
 `/new` creates a new SuperCodex run and a new Codex thread. `/clear` is an alias for `/new`.
 
-## 4. Recommended Daily Flow
+## 5. Recommended Daily Flow
 
 ### New Project
 
@@ -185,7 +212,7 @@ or:
 /new Only check whether the README still matches the current implementation.
 ```
 
-## 5. TUI Controls
+## 6. TUI Controls
 
 Common keys:
 
@@ -206,7 +233,7 @@ The main screen shows:
 
 Command output and file-read output are compact in the UI. Full raw data remains in `.supercodex/logs/supercodex/` and in Codex native session JSONL.
 
-## 6. Permissions
+## 7. Permissions
 
 The main permission modes are:
 
@@ -236,7 +263,7 @@ Advanced native Codex settings remain available:
 
 The `/permissions`, `/sandbox`, and `/approval` command pickers support keyboard selection with Up/Down and Enter.
 
-## 7. Model, Reasoning, and Auth
+## 8. Model, Reasoning, and Auth
 
 ```text
 /model gpt-5.5
@@ -266,7 +293,7 @@ Global SuperCodex auth data is stored under:
 C:\Users\<you>\.supercodex\codex-auth
 ```
 
-## 8. Codex Approval and Input Requests
+## 9. Codex Approval and Input Requests
 
 When Codex CLI asks for command execution approval, file-change approval, permission escalation, user input, or MCP elicitation, SuperCodex captures the app-server request and displays it in the same `PickerOverlay` design used by the command pickers and the Esc stop confirmation picker.
 
@@ -292,7 +319,7 @@ You can also use slash commands:
 
 Freeform Codex questions and MCP forms can be answered with `/answer <text-or-json>`.
 
-## 9. Non-TUI Commands
+## 10. Non-TUI Commands
 
 Check status:
 
@@ -330,7 +357,7 @@ Interrupt a running turn:
 supercodex interrupt --project C:\path\to\project --message "Stop and inspect the failing tests first."
 ```
 
-## 10. FAQ
+## 11. FAQ
 
 ### Does `/start` create a new session?
 
@@ -386,7 +413,7 @@ or:
 "nextDefaultThreadAction": "thread/start"
 ```
 
-## 11. Verify This Repository
+## 12. Verify This Repository
 
 In `C:\supercodex`:
 
@@ -400,7 +427,7 @@ git diff --check
 
 The focused supervisor/app-server tests verify:
 
-- Saved same-Stage sessions use `resume=true` and the original thread.
+- Saved active-PLAN sessions use `resume=true` and the original thread, even when the next work is in a different Stage.
 - Active runtime threads left by unexpected closes can be recovered.
 - App-server resume parameters include `threadId`.
 - OpenTUI `/start` uses active saved-run startup, not passive `/resume` or fresh `/new`.

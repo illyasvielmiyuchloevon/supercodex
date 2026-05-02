@@ -162,12 +162,11 @@ export class Supervisor {
       const latestSettings = await readSupervisorSettings(project, runId);
       const runtimeOptions = this.applySettingsToOptions(this.config.appServerOptions, latestSettings);
       await this.applyCodexRuntimeConfig(project, runtimeOptions);
-      const storedStage = typeof sessionState.stage_id === "string" ? sessionState.stage_id : null;
       const storedThreadId = resumableThreadId(sessionState);
-      const stageChanged = Boolean(work.stageId && storedStage && storedStage !== work.stageId);
       const forceFreshRequested = await consumeForceFreshNext(project, runId);
-      const forceFresh = forceFreshRequested || stageChanged || sameSessionFailures >= this.config.sameSessionRetryLimit;
-      const resume = shouldResumeStoredThread(sessionState, work.stageId, forceFresh);
+      const planReviewBoundary = shouldStartFreshPlanReviewThread(sessionState, work);
+      const forceFresh = forceFreshRequested || planReviewBoundary || sameSessionFailures >= this.config.sameSessionRetryLimit;
+      const resume = shouldResumeStoredThread(sessionState, forceFresh);
       const threadId = forceFresh ? null : storedThreadId;
 
       const prompt = buildPrompt({
@@ -217,6 +216,7 @@ export class Supervisor {
         stage_id: work.stageId ?? null,
         task_id: work.taskId ?? null,
         work_kind: work.kind,
+        thread_scope: threadScopeForWork(work),
         lastClassification: result.classification,
         lastReturnCode: result.returnCode,
         lastEventLog: result.eventLogPath,
@@ -526,16 +526,39 @@ export function resumableThreadId(sessionState: Record<string, unknown>): string
   return candidate?.trim() ? candidate : null;
 }
 
-export function shouldResumeStoredThread(sessionState: Record<string, unknown>, workStageId?: string | null, forceFresh = false): boolean {
+export function shouldResumeStoredThread(sessionState: Record<string, unknown>, forceFresh = false): boolean {
   const storedThreadId = resumableThreadId(sessionState);
   if (!storedThreadId || forceFresh) {
     return false;
   }
-  const storedStage = typeof sessionState.stage_id === "string" && sessionState.stage_id.trim() ? sessionState.stage_id.trim() : null;
-  if (workStageId && storedStage && storedStage !== workStageId) {
+  return true;
+}
+
+export function shouldStartFreshPlanReviewThread(sessionState: Record<string, unknown>, work: WorkItem): boolean {
+  if (!isPlanReviewWork(work) || !resumableThreadId(sessionState)) {
     return false;
   }
-  return true;
+  return stringValue(sessionState.thread_scope, "") !== "plan-review";
+}
+
+function threadScopeForWork(work: WorkItem): string {
+  return isPlanReviewWork(work) ? "plan-review" : "plan-cycle";
+}
+
+function isPlanReviewWork(work: WorkItem): boolean {
+  if (work.kind !== "stage_gate") {
+    return false;
+  }
+  return (
+    work.source === "final-acceptance" ||
+    work.title.includes("最终目标验收") ||
+    work.reason.includes("RUN_FINAL_ACCEPTANCE") ||
+    work.reason.includes("PHASE_6_FINAL_ACCEPTANCE")
+  );
+}
+
+function stringValue(value: unknown, fallback: string): string {
+  return typeof value === "string" ? value : fallback;
 }
 
 function isAuthFailureClassification(classification: string): classification is "usage_limit" | "unauthorized" {

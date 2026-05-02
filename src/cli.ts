@@ -7,7 +7,7 @@ import { CodexAuthManager, defaultCodexHome, defaultSupervisorHome, readEffectiv
 import { defaultAppServerOptions, resolveCodexInvocation, type AppServerOptions } from "./app-server.js";
 import { clearControl, readControl, requestInterrupt } from "./control.js";
 import { readPendingInteractions } from "./interactions.js";
-import { Supervisor, type SupervisorConfig, shouldResumeStoredThread, resumableThreadId } from "./supervisor.js";
+import { Supervisor, type SupervisorConfig, shouldResumeStoredThread, shouldStartFreshPlanReviewThread, resumableThreadId } from "./supervisor.js";
 import { chooseNextWork, ensureProjectAgentsMd, ensureScaffold, ensureSupercodexGitignore, loadSnapshotForRun, loadSupervisorRuntime } from "./workspace.js";
 import { parseReasoningEffort, readSupervisorSettings, sanitizeRunId } from "./settings.js";
 import { runAttach } from "./tui.js";
@@ -69,14 +69,15 @@ async function cmdStatus(args: ParsedArgs): Promise<number> {
   const work = chooseNextWork(snapshot);
   const authManager = authManagerFromArgs(args);
   const appServerOptions = applySettingsToAppServerOptions(appServerOptionsFromArgs(args), await readSupervisorSettings(project, runId));
-  const nextThread = resumableThreadId(snapshot.supervisorSession);
-  const nextResume = shouldResumeStoredThread(snapshot.supervisorSession, work.stageId);
+  const nextPlanReviewFresh = shouldStartFreshPlanReviewThread(snapshot.supervisorSession, work);
+  const nextThread = nextPlanReviewFresh ? null : resumableThreadId(snapshot.supervisorSession);
+  const nextResume = shouldResumeStoredThread(snapshot.supervisorSession, nextPlanReviewFresh);
   console.log(
     JSON.stringify(
       {
         project,
         done: snapshot.done,
-        executionLock: snapshot.executionLocked,
+        phaseLocked: snapshot.phaseLocked,
         missingDocs: snapshot.missingDocs,
         state: {
           mode: snapshot.state.mode,
@@ -149,7 +150,7 @@ async function cmdDoctor(args: ParsedArgs): Promise<number> {
         gitAvailable: gitStatus.status === 0,
         missingDocs: snapshot.missingDocs,
         hasSupercodexState: Object.keys(snapshot.state).length > 0,
-        hasBacklog: Object.keys(snapshot.backlog).length > 0,
+        hasAutoDevState: Object.keys(snapshot.autoDevState).length > 0,
         authManagerRoot: authManager.root,
         codexHome: authManager.codexHome,
         authAccounts: await authManager.listAccounts(),
@@ -435,7 +436,7 @@ function printHelp(): void {
 Commands:
   supercodex  Start the interactive TUI in the current directory
   tui         Start the interactive TUI explicitly
-  init        Supplement required .supercodex and .supercodex/docs files without overwriting PRD/PLAN
+  init        Supplement required AGENTS.md .supercodex files without overwriting PRD/PLAN
   status      Show recovered state and next work
   doctor      Check Codex app-server, git, scaffold, and auth availability
   run         Run until done by default; use --max-cycles to cap cycles

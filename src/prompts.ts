@@ -22,23 +22,23 @@ Recover by reading the persistent project state first. Do not ask the user.
     : "";
   const freshBlock = input.forceFreshSession
     ? `
-This is a deliberately fresh Codex thread for a new Stage or repeated failure recovery. Use only repository files, .supercodex state, .supercodex/docs, checkpoints, and git history as truth.
+This is a deliberately fresh Codex thread for plan-completion review, explicit operator request, or repeated failure recovery. Use only repository files, .supercodex/AUTO_DEV_STATE.json, lightweight .supercodex governance artifacts, checkpoints, and git history as truth.
 `
     : "";
   const operatorBlock = directOperatorMessage
     ? `
 ## Runtime Operator Intervention
-The user supplied this instruction through the SuperCodex control channel. Treat it as the highest-priority instruction for this turn while preserving the Final Goal Ledger, active PRD/PLAN, backlog, checkpoints, and git state as durable context. The Final Goal Ledger is the root source of truth; PRD and PLAN are active interpretations that must be revised only through the versioned history rules when they no longer cover that ledger.
+The user supplied this instruction through the SuperCodex control channel. Treat it as the highest-priority instruction for this turn while preserving FINAL_GOAL, AUTO_DEV_STATE, PRD, PLAN, TRACEABILITY_MATRIX, reports, checkpoints, and git state as durable context. FINAL_GOAL is the root source of truth; PRD, architecture, PLAN, and TRACEABILITY_MATRIX are active interpretations that must be updated when they no longer cover FINAL_GOAL.
 
 ${directOperatorMessage}
 
-Apply the intervention directly. Do not update .supercodex/docs/PLAN.md or .supercodex/backlog.json unless this instruction explicitly changes the future task plan or acceptance path, or unless a required coverage gate / Final Objective Audit proves that the current PRD, Acceptance Matrix, PLAN, or backlog is incomplete.
+Apply the intervention directly. Do not update .supercodex/PLAN.md or .supercodex/AUTO_DEV_STATE.json unless this instruction explicitly changes the future task plan or acceptance path, or unless PRD coverage, TRACEABILITY_MATRIX, test/review evidence, or FINAL_ACCEPTANCE_REPORT proves that the current governance state is incomplete.
 `
     : "";
   const executionGuidance =
     work.kind === "operator_intervention"
-      ? "Handle the runtime operator message as the actual work item. If the project is already marked done and the message is a new change request, append the change to the Final Goal Ledger and reopen durable PRD/Acceptance Matrix/PLAN/backlog state through versioned revisions; do not run a synthetic final Stage Gate just because all existing PLAN tasks are checked."
-      : "Execute this work item end to end if feasible in this turn. Keep changes scoped to the current task, stage gate, or required audit-driven revision. Update PLAN/backlog/state/checkpoints/progress after the task. If the work item is `supplement_docs`, create only missing artifacts and preserve existing PRD/PLAN wording unless AGENTS.md requires a versioned revision because the Final Goal Ledger, PRD coverage gate, Acceptance Matrix, Gap Review, or Final Objective Audit proves a gap.";
+      ? "Handle the runtime operator message as the actual work item. If the project is already marked delivered and the message is a new change request, update FINAL_GOAL and reopen AUTO_DEV_STATE / PRD / ARCHITECTURE / PLAN / TRACEABILITY_MATRIX as required by AGENTS.md; do not run a synthetic final gate just because all existing PLAN tasks are checked."
+      : "Execute this work item end to end if feasible in this turn. Keep changes scoped to the current phase, task, gate, or required acceptance-driven revision. Update PLAN, TRACEABILITY_MATRIX, AUTO_DEV_STATE, checkpoints, and progress after the task. If the work item is `supplement_docs`, create only missing lightweight AGENTS.md artifacts and preserve existing PRD/PLAN wording unless FINAL_GOAL coverage, traceability, tests, review, or final acceptance proves a gap.";
 
   return `# External Supervisor Prompt
 
@@ -46,23 +46,29 @@ You are being launched by supercodex, an external Codex app-server loop controll
 
 ## Mandatory Bootstrap
 1. Read AGENTS.md.
-2. Read \`.supercodex/state.json\`, \`.supercodex/backlog.json\` if present, \`.supercodex/checkpoints.md\`, \`.supercodex/last-action.md\`, \`.supercodex/last-error.md\`.
-3. Read \`.supercodex/docs/FINAL_GOAL_LEDGER.md\`, \`.supercodex/docs/REQUIREMENTS.md\`, \`.supercodex/docs/PRD.md\`, \`.supercodex/docs/ARCHITECTURE.md\`, \`.supercodex/docs/PLAN.md\`, \`.supercodex/docs/ACCEPTANCE_MATRIX.md\`, \`.supercodex/docs/GAP_REPORT.md\`, \`.supercodex/docs/FINAL_OBJECTIVE_AUDIT.md\`, \`.supercodex/docs/QA_REPORT.md\`, \`.supercodex/docs/REVIEW_REPORT.md\`, and \`.supercodex/docs/DELIVERY_REPORT.md\` if present.
+2. Read \`.supercodex/AUTO_DEV_STATE.json\`, \`.supercodex/checkpoints.md\`, \`.supercodex/last-action.md\`, and \`.supercodex/last-error.md\` if present.
+3. Read \`.supercodex/FINAL_GOAL.md\`, \`.supercodex/CLARIFICATIONS.md\`, \`.supercodex/ASSUMPTIONS.md\`, \`.supercodex/PRD.md\`, \`.supercodex/ARCHITECTURE.md\`, \`.supercodex/PLAN.md\`, \`.supercodex/TRACEABILITY_MATRIX.md\`, \`.supercodex/TEST_REPORT.md\`, \`.supercodex/CODE_REVIEW_REPORT.md\`, \`.supercodex/FINAL_ACCEPTANCE_REPORT.md\`, and \`.supercodex/PR_SUMMARY.md\` if present.
 4. Check git status before edits.
-5. Resume from the next unfinished checkpoint/task. Do not restart from scratch.
-6. If PLAN is exhausted, do not deliver. Run or refresh Final Objective Audit against the Final Goal Ledger first.
+5. Resume from AUTO_DEV_STATE phase/current task/remaining tasks. Do not restart from scratch.
+6. If PLAN is exhausted, do not deliver. Run or refresh FINAL_ACCEPTANCE_REPORT against FINAL_GOAL first.
 
-## Existing Project Continuity and Revision Rule
-If this project already has \`.supercodex\`, \`.supercodex/docs/PRD.md\`, or \`.supercodex/docs/PLAN.md\`, preserve the existing durable state and continue from it by default. Supplement missing documents/state first, continue the existing PLAN when it still covers the Final Goal Ledger, and do not restart from scratch.
+## Existing Project Continuity and State Rule
+If this project already has \`.supercodex\`, \`.supercodex/PRD.md\`, \`.supercodex/PLAN.md\`, or \`.supercodex/AUTO_DEV_STATE.json\`, preserve the existing durable state and continue from it by default. Supplement missing lightweight AGENTS.md artifacts first, continue the existing PLAN when it still covers FINAL_GOAL, and do not restart from scratch.
 
-The continuity rule forbids ungrounded replacement, not required correction. Do not silently replace PRD, rewrite PLAN into an unrelated new strategy, or replan completed/in-progress work merely because a fresh session started. However, when AGENTS.md, the Final Goal Ledger, PRD Adversarial Coverage Gate, Acceptance Matrix, Gap Review, Final Objective Audit, or an explicit operator instruction proves a gap, you must follow the versioned revision loop: archive the old active artifact under \`.supercodex/docs/history/\`, increment the relevant iteration fields, revise PRD / rebuild Acceptance Matrix / update Architecture / rewrite or extend PLAN and backlog as needed, write a checkpoint, and continue execution.
+The continuity rule forbids ungrounded replacement, not required correction. Do not silently replace PRD, rewrite PLAN into an unrelated new strategy, or replan completed/in-progress work merely because a fresh session started. However, when AGENTS.md, FINAL_GOAL, TRACEABILITY_MATRIX, tests, review, FINAL_ACCEPTANCE_REPORT, or an explicit operator instruction proves a gap, update PRD / ARCHITECTURE / PLAN / TRACEABILITY_MATRIX / AUTO_DEV_STATE as needed, write a checkpoint, and continue execution.
 
-The Final Goal Ledger is more authoritative than PRD and PLAN. If PRD or PLAN conflicts with, omits, narrows, or weakens the ledger, repair PRD/PLAN through the versioned process instead of treating the old documents as immutable truth.
+FINAL_GOAL is more authoritative than PRD and PLAN. If PRD, architecture, PLAN, or TRACEABILITY_MATRIX conflicts with, omits, narrows, or weakens FINAL_GOAL, repair the lightweight governance artifacts instead of treating the old documents as immutable truth.
+
+## Sub-Agent Collaboration Policy
+When the current Codex runtime provides sub-agent, delegation, worker, explorer, tester, or reviewer capabilities and policy permits using them, use them as needed for complex work. Prefer sub-agents for independent codebase exploration, disjoint implementation ownership, repeated failure root-cause analysis, parallel testing, code review, security review, or final-goal coverage review.
+
+Do not spawn sub-agents for tiny tasks, overlapping write scopes, or the immediate blocking step on the critical path. Give each sub-agent a concrete role, scope, file/module ownership, expected output, and integration boundary. The main agent remains responsible for reviewing results, integrating changes, running verification, and updating AUTO_DEV_STATE, PLAN, TRACEABILITY_MATRIX, and reports.
 
 ## Session Policy
 - SuperCodex controls Codex through app-server threads and turns, not through the legacy non-interactive runner.
-- Same Stage failures may resume this thread.
-- After a Stage gate has committed and pushed, SuperCodex starts the next Stage in a fresh thread to avoid context corrosion.
+- Keep the whole active PLAN in one Codex thread. Do not start a fresh thread merely because the stage or phase changed.
+- Start a fresh normal-work thread only when the PLAN is exhausted and the next work is full-project Final Acceptance / PRD / Architecture / PLAN review for the next cycle.
+- Explicit operator \`/fresh-next\` requests and hard runtime recovery may still start a fresh thread.
 - Context compaction failure and network interruption are not user blockers. Recover from persistent state and continue.
 ${freshBlock}
 ## Current Work Item
@@ -77,9 +83,11 @@ ${operatorBlock}
 ## Execution Contract
 ${executionGuidance}
 
-After all planned work is checked off, run Final Objective Audit before marking delivery done. If the audit fails, classify the gap (PRD_GAP, ACCEPTANCE_GAP, ARCHITECTURE_GAP, PLAN_GAP, IMPLEMENTATION_GAP, TEST_GAP, DELIVERY_GAP, or BLOCKER), update the durable documents/backlog/state according to AGENTS.md, and continue the loop. Passing tests, completed PLAN tasks, committed code, pushed branches, or PR docs are not final completion by themselves.
+After all planned work is checked off, run Final Acceptance before marking delivery done. If acceptance fails, update FINAL_ACCEPTANCE_REPORT, set AUTO_DEV_STATE decision to FAIL_CONTINUE_NEXT_CYCLE, revise PRD / ARCHITECTURE / PLAN / TRACEABILITY_MATRIX, and continue the loop. Passing tests, completed PLAN tasks, committed code, pushed branches, or PR docs are not final completion by themselves.
 
-Do not ask the user during execution. If an external credential, network, or remote Git permission is unavailable, record it in \`.supercodex/docs/BLOCKERS.md\` and continue with local substitutes or PR docs where possible.
+Inside PLAN, use Stage as the execution unit and Milestone as the intermediate commit/push boundary. Do not create or request a fresh Codex thread because a Stage changed, a Milestone commit happened, or an intermediate push/PR document was updated; only PLAN completion leads to the full-project Final Acceptance review thread.
+
+Do not ask the user after Phase 0. If an external credential, network, or remote Git permission is unavailable, record the blocker in TEST_REPORT, CODE_REVIEW_REPORT, FINAL_ACCEPTANCE_REPORT, or PR_SUMMARY as appropriate, and continue with local substitutes where possible.
 ${previousBlock}
 `;
 }

@@ -28,13 +28,13 @@ export interface WorkItem {
 export interface ProjectSnapshot {
   project: string;
   state: JsonObject;
-  backlog: JsonObject;
+  autoDevState: JsonObject;
   docsPresent: Record<string, boolean>;
   missingDocs: string[];
   planTasks: PlanTask[];
   supervisorSession: JsonObject;
   done: boolean;
-  executionLocked: boolean;
+  phaseLocked: boolean;
 }
 
 export interface CodexRunResult {

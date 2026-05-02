@@ -2,9 +2,9 @@
 
 SuperCodex 是一个 TypeScript/Node.js 编写的 Codex CLI 外部监督器。它通过正式的 `codex app-server --listen stdio://` JSON-RPC 接口控制 Codex 的 thread/turn 生命周期，把项目运行状态保存到 `.supercodex/`，并提供 OpenTUI/Solid 终端界面，用于长时间、可恢复、可干预的软件开发流程。
 
-当前版本：`0.1.0`（0.1 版本）。
+当前版本：`0.11.0`（0.11 版本）。
 
-当前 0.1 版本的正式运行架构只有 `codex app-server`。旧的一次性 runner 和手写 raw-mode TUI 只保留为兼容/降级路径，不再是正式主路径。
+当前 0.11 版本的正式运行架构只有 `codex app-server`。旧的一次性 runner 和手写 raw-mode TUI 只保留为兼容/降级路径，不再是正式主路径。
 
 ## 核心能力
 
@@ -51,6 +51,33 @@ supercodex doctor --project C:\supercodex
 supercodex status --project C:\supercodex
 ```
 
+## 卸载
+
+如果你是通过本仓库 `npm link` 安装的，移除全局命令：
+
+```powershell
+npm unlink -g supercodex
+```
+
+如果你安装的是全局发布包，使用：
+
+```powershell
+npm uninstall -g supercodex
+```
+
+可选：清理 SuperCodex 仓库里的本地构建和依赖：
+
+```powershell
+cd C:\supercodex
+Remove-Item -Recurse -Force .\dist, .\node_modules
+```
+
+如果要移除某个目标项目中的 SuperCodex 运行状态，请确认不再需要续跑状态、日志、报告和 checkpoint 后再删除该项目的 `.supercodex/`：
+
+```powershell
+Remove-Item -Recurse -Force .\.supercodex
+```
+
 ## 启动 TUI
 
 进入你希望 SuperCodex 处理的项目目录：
@@ -85,11 +112,11 @@ supercodex
 
 - 没有保存 thread 时，Codex 只能新开 thread。
 - 执行过 `/fresh-next` 时，下一轮强制新开 thread。
-- 保存的 stage 和下一项工作 stage 不一致时，会新开 thread，避免旧上下文污染新阶段。
+- 当前 PLAN 全部完成后，SuperCodex 会为全项目 Final Acceptance / PRD / Architecture / PLAN 审查开启 fresh thread；如果未达成最终目标，这个审查步骤负责更新文档并创建下一 Cycle。
 - 同一个 thread 连续失败达到限制时，会新开 thread。
 - dry-run 或不可恢复失败不会被当作可续跑 thread。
 
-也就是说，`/start` 不会新建 SuperCodex run；但当恢复旧 Codex thread 不安全时，它会在同一个 run 中安全地新开 Codex thread。
+Stage 或 phase 在 active PLAN 内变化不会新开 Codex thread。Milestone 完成可以创建阶段性 commit/push，但仍然留在同一个 plan-cycle thread，也不能替代 Phase 7 的最终 PR 闭环。也就是说，`/start` 不会新建 SuperCodex run；但当恢复旧 Codex thread 不安全，或到达 PLAN 完成后的全局审查边界时，它会在同一个 run 中安全地新开 Codex thread。
 
 ## `/resume` 和 `/new`
 
@@ -214,8 +241,18 @@ supercodex run --project C:\path\to\project --run-id main
 
 ```text
 .supercodex/
-  state.json
-  backlog.json
+  AUTO_DEV_STATE.json
+  FINAL_GOAL.md
+  CLARIFICATIONS.md
+  ASSUMPTIONS.md
+  PRD.md
+  ARCHITECTURE.md
+  PLAN.md
+  TRACEABILITY_MATRIX.md
+  TEST_REPORT.md
+  CODE_REVIEW_REPORT.md
+  FINAL_ACCEPTANCE_REPORT.md
+  PR_SUMMARY.md
   progress.md
   checkpoints.md
   last-action.md
@@ -224,7 +261,6 @@ supercodex run --project C:\path\to\project --run-id main
     runtime.json
     runs/<run-id>/
   logs/
-  docs/
 ```
 
 `.supercodex/` 是运行态目录，默认写入 `.gitignore`。

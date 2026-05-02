@@ -25,7 +25,7 @@ test("default supervisor config runs until done unless explicitly capped", () =>
   assert.equal(config.sameSessionRetryLimit, 10);
 });
 
-test("stage change forces a fresh app-server thread", async () => {
+test("stage change keeps the active PLAN in the same app-server thread", async () => {
   const project = await mkdtemp(join(tmpdir(), "supercodex-"));
   await writeProjectState(project);
   await writeFile(
@@ -43,10 +43,56 @@ test("stage change forces a fresh app-server thread", async () => {
   const config = { ...defaultSupervisorConfig(project), maxCycles: 1, retryBaseSeconds: 0, retryMaxSeconds: 0 };
   const code = await new Supervisor(config, runner, async () => undefined).run();
   assert.equal(code, 0);
-  assert.deepEqual(calls, [{ threadId: null, resume: false }]);
+  assert.deepEqual(calls, [{ threadId: "thr_old", resume: true }]);
 });
 
-test("saved same-stage session resumes the stored thread instead of opening a fresh session", async () => {
+test("plan completion starts one fresh global acceptance review thread", async () => {
+  const project = await mkdtemp(join(tmpdir(), "supercodex-plan-review-"));
+  await writePlanCompleteProjectState(project);
+  await writeFile(
+    join(project, ".supercodex", "runtime", "session.json"),
+    JSON.stringify({ thread_id: "thr_plan", stage_id: "stage-2", thread_scope: "plan-cycle", lastClassification: "success" }),
+    "utf8",
+  );
+  const calls: Array<{ threadId?: string | null; resume?: boolean }> = [];
+  const runner: Runner = {
+    async run(input) {
+      calls.push({ threadId: input.threadId, resume: input.resume });
+      return result("thr_review");
+    },
+  };
+  const config = { ...defaultSupervisorConfig(project), maxCycles: 1, retryBaseSeconds: 0, retryMaxSeconds: 0 };
+  const code = await new Supervisor(config, runner, async () => undefined).run();
+  const saved = JSON.parse(await readFile(join(project, ".supercodex", "runtime", "session.json"), "utf8")) as { thread_scope?: string };
+
+  assert.equal(code, 0);
+  assert.deepEqual(calls, [{ threadId: null, resume: false }]);
+  assert.equal(saved.thread_scope, "plan-review");
+});
+
+test("global acceptance review resumes its review thread until it updates the next cycle", async () => {
+  const project = await mkdtemp(join(tmpdir(), "supercodex-plan-review-resume-"));
+  await writePlanCompleteProjectState(project);
+  await writeFile(
+    join(project, ".supercodex", "runtime", "session.json"),
+    JSON.stringify({ thread_id: "thr_review", thread_scope: "plan-review", lastClassification: "success" }),
+    "utf8",
+  );
+  const calls: Array<{ threadId?: string | null; resume?: boolean }> = [];
+  const runner: Runner = {
+    async run(input) {
+      calls.push({ threadId: input.threadId, resume: input.resume });
+      return result("thr_review");
+    },
+  };
+  const config = { ...defaultSupervisorConfig(project), maxCycles: 1, retryBaseSeconds: 0, retryMaxSeconds: 0 };
+  const code = await new Supervisor(config, runner, async () => undefined).run();
+
+  assert.equal(code, 0);
+  assert.deepEqual(calls, [{ threadId: "thr_review", resume: true }]);
+});
+
+test("saved PLAN session resumes the stored thread instead of opening a fresh session", async () => {
   const project = await mkdtemp(join(tmpdir(), "supercodex-resume-"));
   await writeProjectState(project);
   await writeFile(
@@ -253,15 +299,17 @@ test("operator message on a done project runs as supervised intervention without
   assert.equal(code, 0);
   assert.match(capturedPrompt, /External Supervisor Prompt/);
   assert.match(capturedPrompt, /Runtime Operator Intervention/);
-  assert.match(capturedPrompt, /FINAL_GOAL_LEDGER\.md/);
-  assert.match(capturedPrompt, /FINAL_OBJECTIVE_AUDIT\.md/);
-  assert.match(capturedPrompt, /Continuity and Revision Rule/);
-  assert.match(capturedPrompt, /archive the old active artifact/);
+  assert.match(capturedPrompt, /AUTO_DEV_STATE\.json/);
+  assert.match(capturedPrompt, /FINAL_ACCEPTANCE_REPORT\.md/);
+  assert.match(capturedPrompt, /Continuity and State Rule/);
+  assert.match(capturedPrompt, /TRACEABILITY_MATRIX/);
+  assert.match(capturedPrompt, /Sub-Agent Collaboration Policy/);
+  assert.match(capturedPrompt, /disjoint implementation ownership/);
   assert.doesNotMatch(capturedPrompt, /Do not replace PRD, do not rewrite PLAN into a new strategy, and do not replan completed or in-progress work\./);
   assert.match(capturedPrompt, /kind: operator_intervention/);
   assert.match(capturedPrompt, new RegExp(message));
-  const state = JSON.parse(await readFile(join(project, ".supercodex", "state.json"), "utf8")) as { done?: boolean };
-  assert.equal(state.done, true);
+  const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as { decision?: string };
+  assert.equal(state.decision, "DELIVERED");
 });
 
 test("fresh TUI operator mode wraps the message while prioritizing it over unfinished plan work", async () => {
@@ -298,49 +346,83 @@ test("fresh TUI operator mode wraps the message while prioritizing it over unfin
 async function writeProjectState(project: string): Promise<void> {
   await import("node:fs/promises").then(async ({ mkdir }) => {
     await mkdir(join(project, ".supercodex", "runtime"), { recursive: true });
-    await mkdir(join(project, ".supercodex", "docs"), { recursive: true });
+    await mkdir(join(project, ".supercodex"), { recursive: true });
   });
-  await writeFile(join(project, ".supercodex", "state.json"), JSON.stringify({ done: false, currentStageId: "stage-2" }), "utf8");
   await writeFile(
-    join(project, ".supercodex", "backlog.json"),
+    join(project, ".supercodex", "AUTO_DEV_STATE.json"),
     JSON.stringify({
-      stages: [
-        { id: "stage-1", status: "done", tasks: [{ id: "stage-1-task-1", status: "done" }], gate: { testsPassed: true, reviewPassed: true, gapReviewed: true, prCreatedOrDocumented: true } },
-        { id: "stage-2", status: "todo", tasks: [{ id: "stage-2-task-1", title: "Next", status: "todo", dependencies: [] }] },
-      ],
+      schema_version: "1.0",
+      cycle: 1,
+      phase: "PHASE_4_DEVELOPMENT",
+      decision: "IN_PROGRESS",
+      clarification: { status: "CLOSED", asked_count: 0, max_questions: 10, pending_questions: [], answered_questions: [] },
+      plan: { current_cycle: "Cycle 1", current_stage: "stage-2", current_task_id: null, completed_task_ids: ["stage-1-task-1"], remaining_task_ids: ["stage-2-task-1"] },
+      execution: { next_action: "EXECUTE_NEXT_PLAN_TASK", completed_work: [], failed_items: [], last_commands: [] },
+      quality: { tests_status: "NOT_RUN", code_review_status: "NOT_RUN", blocking_issues: [] },
+      acceptance: { status: "NOT_RUN", decision: "PENDING", remaining_gaps: [] },
+      delivery: { readme_updated: false, git_committed: false, pr_created: false, pr_summary_path: null },
     }),
     "utf8",
   );
-  for (const doc of ["PRD.md", "ARCHITECTURE.md", "PLAN.md", "ACCEPTANCE_MATRIX.md", "GAP_REPORT.md", "QA_REPORT.md", "REVIEW_REPORT.md", "DELIVERY_REPORT.md", "BLOCKERS.md", "REQUIREMENTS.md"]) {
-    await writeFile(join(project, ".supercodex", "docs", doc), "# doc\n", "utf8");
+  for (const doc of ["FINAL_GOAL.md", "CLARIFICATIONS.md", "ASSUMPTIONS.md", "PRD.md", "ARCHITECTURE.md", "PLAN.md", "TRACEABILITY_MATRIX.md", "TEST_REPORT.md", "CODE_REVIEW_REPORT.md", "FINAL_ACCEPTANCE_REPORT.md", "PR_SUMMARY.md"]) {
+    await writeFile(join(project, ".supercodex", doc), "# doc\n", "utf8");
   }
+}
+
+async function writePlanCompleteProjectState(project: string): Promise<void> {
+  await import("node:fs/promises").then(async ({ mkdir }) => {
+    await mkdir(join(project, ".supercodex", "runtime"), { recursive: true });
+    await mkdir(join(project, ".supercodex"), { recursive: true });
+  });
+  await writeFile(
+    join(project, ".supercodex", "AUTO_DEV_STATE.json"),
+    JSON.stringify({
+      schema_version: "1.0",
+      cycle: 1,
+      phase: "PHASE_6_FINAL_ACCEPTANCE",
+      decision: "IN_PROGRESS",
+      clarification: { status: "CLOSED", asked_count: 0, max_questions: 10, pending_questions: [], answered_questions: [] },
+      plan: { current_cycle: "Cycle 1", current_stage: null, current_task_id: null, completed_task_ids: ["1.1"], remaining_task_ids: [] },
+      execution: { next_action: "RUN_FINAL_ACCEPTANCE", completed_work: [], failed_items: [], last_commands: [] },
+      quality: { tests_status: "PASS", code_review_status: "PASS", blocking_issues: [] },
+      acceptance: { status: "NOT_RUN", decision: "PENDING", remaining_gaps: [] },
+      delivery: { readme_updated: false, git_committed: false, pr_created: false, pr_summary_path: null },
+    }),
+    "utf8",
+  );
+  const donePlan = "# PLAN\n\n## Stage 1: Done\n\n- [x] Task 1.1: Done\n";
+  for (const doc of ["FINAL_GOAL.md", "CLARIFICATIONS.md", "ASSUMPTIONS.md", "PRD.md", "ARCHITECTURE.md", "TRACEABILITY_MATRIX.md", "TEST_REPORT.md", "CODE_REVIEW_REPORT.md", "FINAL_ACCEPTANCE_REPORT.md", "PR_SUMMARY.md"]) {
+    await writeFile(join(project, ".supercodex", doc), "# doc\n", "utf8");
+  }
+  await writeFile(join(project, ".supercodex", "PLAN.md"), donePlan, "utf8");
 }
 
 async function writeDoneProjectState(project: string): Promise<void> {
   await import("node:fs/promises").then(async ({ mkdir }) => {
     await mkdir(join(project, ".supercodex", "runtime"), { recursive: true });
-    await mkdir(join(project, ".supercodex", "docs"), { recursive: true });
+    await mkdir(join(project, ".supercodex"), { recursive: true });
   });
-  await writeFile(join(project, ".supercodex", "state.json"), JSON.stringify({ done: true, mode: "done", phase: "delivery" }), "utf8");
   await writeFile(
-    join(project, ".supercodex", "backlog.json"),
+    join(project, ".supercodex", "AUTO_DEV_STATE.json"),
     JSON.stringify({
-      stages: [
-        {
-          id: "stage-1",
-          status: "done",
-          tasks: [{ id: "stage-1-task-1", title: "Done", status: "done", dependencies: [] }],
-          gate: { testsPassed: true, reviewPassed: true, gapReviewed: true, prCreatedOrDocumented: true },
-        },
-      ],
+      schema_version: "1.0",
+      cycle: 1,
+      phase: "PHASE_7_DELIVERY_PR",
+      decision: "DELIVERED",
+      clarification: { status: "CLOSED", asked_count: 0, max_questions: 10, pending_questions: [], answered_questions: [] },
+      plan: { current_cycle: "Cycle 1", current_stage: null, current_task_id: null, completed_task_ids: ["1.1"], remaining_task_ids: [] },
+      execution: { next_action: "DONE", completed_work: [], failed_items: [], last_commands: [] },
+      quality: { tests_status: "PASS", code_review_status: "PASS", blocking_issues: [] },
+      acceptance: { status: "PASS", decision: "PASS", remaining_gaps: [] },
+      delivery: { readme_updated: true, git_committed: true, pr_created: false, pr_summary_path: ".supercodex/PR_SUMMARY.md" },
     }),
     "utf8",
   );
-  const donePlan = "# PLAN\n\n## Stage 1: Done\n\n- [x] Task S1-T1: Done\n";
-  for (const doc of ["PRD.md", "ARCHITECTURE.md", "ACCEPTANCE_MATRIX.md", "GAP_REPORT.md", "QA_REPORT.md", "REVIEW_REPORT.md", "DELIVERY_REPORT.md", "BLOCKERS.md", "REQUIREMENTS.md"]) {
-    await writeFile(join(project, ".supercodex", "docs", doc), "# doc\n", "utf8");
+  const donePlan = "# PLAN\n\n## Stage 1: Done\n\n- [x] Task 1.1: Done\n";
+  for (const doc of ["FINAL_GOAL.md", "CLARIFICATIONS.md", "ASSUMPTIONS.md", "PRD.md", "ARCHITECTURE.md", "TRACEABILITY_MATRIX.md", "TEST_REPORT.md", "CODE_REVIEW_REPORT.md", "FINAL_ACCEPTANCE_REPORT.md", "PR_SUMMARY.md"]) {
+    await writeFile(join(project, ".supercodex", doc), "# doc\n", "utf8");
   }
-  await writeFile(join(project, ".supercodex", "docs", "PLAN.md"), donePlan, "utf8");
+  await writeFile(join(project, ".supercodex", "PLAN.md"), donePlan, "utf8");
 }
 
 function result(threadId: string): CodexRunResult {
