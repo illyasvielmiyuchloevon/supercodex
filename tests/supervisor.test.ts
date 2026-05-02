@@ -150,6 +150,32 @@ test("operator stop without a message interrupts once and does not start a repla
   assert.deepEqual(calls, [{ threadId: null, resume: false }]);
 });
 
+test("recoverable failures reaching retry threshold force fresh thread and keep running", async () => {
+  const project = await mkdtemp(join(tmpdir(), "supercodex-recoverable-retry-"));
+  await writeProjectState(project);
+  const calls: Array<{ threadId?: string | null; resume?: boolean }> = [];
+  const runner: Runner = {
+    async run(input) {
+      calls.push({ threadId: input.threadId, resume: input.resume });
+      if (calls.length < 4) {
+        return failedResult("thr_compaction", "context_compaction_failed");
+      }
+      return result("thr_fresh");
+    },
+  };
+  const config = { ...defaultSupervisorConfig(project), maxCycles: 4, maxRetries: 3, retryBaseSeconds: 0, retryMaxSeconds: 0 };
+
+  const code = await new Supervisor(config, runner, async () => undefined).run();
+
+  assert.equal(code, 0);
+  assert.deepEqual(calls, [
+    { threadId: null, resume: false },
+    { threadId: "thr_compaction", resume: true },
+    { threadId: "thr_compaction", resume: true },
+    { threadId: null, resume: false },
+  ]);
+});
+
 test("operator message on a done project runs as intervention without reopening final gate", async () => {
   const project = await mkdtemp(join(tmpdir(), "supercodex-done-intervention-"));
   await writeDoneProjectState(project);

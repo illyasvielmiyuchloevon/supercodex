@@ -448,6 +448,9 @@ Common:
   --max-cycles <n>            Optional cap; omitted real runs continue until done
   --timeout-seconds <n>
   --idle-timeout-seconds <n>  Optional no-event timeout; disabled by default
+  --max-retries <n>           Retry threshold before recoverable failures escalate to a fresh thread
+  --same-session-retry-limit <n>
+                              Same-thread failure threshold before starting a fresh thread
   --codex-bin <path-or-name>
   --supercodex-home <path>     Saved auth/config root; defaults to ~/.supercodex
   --run-id <id>               Isolate SuperCodex controls/session for parallel worktrees

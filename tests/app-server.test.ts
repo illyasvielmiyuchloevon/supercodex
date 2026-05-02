@@ -11,6 +11,16 @@ test("classifyAppServerFailure maps structured Codex errors", () => {
   assert.equal(classifyAppServerFailure({ codexErrorInfo: "contextWindowExceeded" }), "context_window_exceeded");
 });
 
+test("classifyAppServerFailure recognizes remote pre-sampling compaction failures", () => {
+  const text = [
+    'Error running remote compact task: stream disconnected before completion: error sending request for url (https://chatgpt.com/backend-api/codex/responses/compact)',
+    "codex_core::compact_remote: remote compaction failed",
+    "codex_core::session::turn: Failed to run pre-sampling compact",
+  ].join("\n");
+
+  assert.equal(classifyAppServerFailure({ error: { message: text, codexErrorInfo: "other" } }), "context_compaction_failed");
+});
+
 test("classifyAppServerFailure keeps text fallbacks for session and usage failures", () => {
   assert.equal(classifyAppServerFailure("thread 123 not found"), "session_not_found");
   assert.equal(classifyAppServerFailure("You've hit your usage limit"), "usage_limit");

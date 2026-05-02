@@ -289,8 +289,17 @@ export class Supervisor {
         return result.returnCode || 1;
       }
       if (consecutiveFailures >= this.config.maxRetries) {
-        await recordProgress(project, "stop", `Recoverable failure exceeded max retries: ${result.classification}.`);
-        return result.returnCode || 1;
+        const delay = Math.min(this.config.retryMaxSeconds, this.config.retryBaseSeconds * 2 ** Math.max(0, consecutiveFailures - 1));
+        await patchSupervisorSettings(project, { forceFreshNext: true }, runId);
+        await recordProgress(
+          project,
+          "retry-escalate",
+          `Recoverable failure reached retry threshold (${consecutiveFailures}/${this.config.maxRetries}): ${result.classification}. SuperCodex will force a fresh Codex thread and continue after ${delay.toFixed(1)}s.`,
+        );
+        consecutiveFailures = 0;
+        sameSessionFailures = 0;
+        await this.sleeper(delay);
+        continue;
       }
       const delay = Math.min(this.config.retryMaxSeconds, this.config.retryBaseSeconds * 2 ** Math.max(0, consecutiveFailures - 1));
       await recordProgress(project, "retry", `Retrying after ${delay.toFixed(1)}s due to ${result.classification}.`);

@@ -666,7 +666,15 @@ export function classifyAppServerFailure(value: unknown): string {
   if (/\b(thread|session|conversation)\b.*\bnot found\b/.test(text)) {
     return "session_not_found";
   }
-  if (text.includes("context compaction failed") || text.includes("context window")) {
+  if (
+    text.includes("context compaction failed") ||
+    text.includes("remote compact task") ||
+    text.includes("pre-sampling compact") ||
+    text.includes("compact_remote") ||
+    text.includes("/responses/compact") ||
+    text.includes("contextcompaction") ||
+    text.includes("context window")
+  ) {
     return "context_compaction_failed";
   }
   if (

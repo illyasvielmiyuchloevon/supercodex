@@ -195,10 +195,11 @@ supercodex attach --project C:\path\to\project
 supercodex interrupt --project C:\path\to\project --message "停止当前方向，检查问题。"
 ```
 
-`run` 默认持续运行，直到项目完成或遇到不可恢复错误；需要限制轮数时显式传 `--max-cycles`。
+`run` 默认持续运行，直到项目完成或遇到不可恢复错误；需要限制轮数时显式传 `--max-cycles`。网络断开、上下文窗口错误、remote compaction 失败、timeout、session 丢失这类可恢复 Codex app-server 错误会退避重试。`--max-retries` 对可恢复错误表示“达到阈值后升级恢复策略”，例如强制 fresh Codex thread 并继续运行；它只对不可恢复错误表示停止阈值。
 
 ```powershell
 supercodex run --project C:\path\to\project --max-cycles 1
+supercodex run --project C:\path\to\project --max-retries 3
 supercodex run --project C:\path\to\project --idle-timeout-seconds 1200
 supercodex run --project C:\path\to\project --run-id main
 ```

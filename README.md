@@ -195,10 +195,11 @@ supercodex attach --project C:\path\to\project
 supercodex interrupt --project C:\path\to\project --message "Stop and inspect the current direction."
 ```
 
-`run` continues until the project is done unless you pass `--max-cycles`.
+`run` continues until the project is done unless you pass `--max-cycles`. Recoverable Codex app-server failures such as network disconnects, context-window errors, remote compaction failures, timeouts, and missing sessions are retried with backoff. `--max-retries` is the escalation threshold for recoverable failures: after the threshold, SuperCodex forces a fresh Codex thread and keeps running. It is a stop threshold only for non-recoverable failures.
 
 ```powershell
 supercodex run --project C:\path\to\project --max-cycles 1
+supercodex run --project C:\path\to\project --max-retries 3
 supercodex run --project C:\path\to\project --idle-timeout-seconds 1200
 supercodex run --project C:\path\to\project --run-id main
 ```
