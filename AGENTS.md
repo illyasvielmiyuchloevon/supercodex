@@ -36,7 +36,7 @@
 3. 遇到错误必须：读取终端输出和日志 → 定位根因 → 修改代码/配置/文档 → 重新运行验证 → 重复直到通过。
 4. 不允许留下未实现的 `TODO`、`FIXME`、`此处省略`、伪代码、占位函数、空实现，除非它们明确属于项目既有代码且本轮无需修改；新增代码不得包含这类占位内容。
 5. 不允许跳过测试、伪造测试结果、只描述未执行的测试。
-6. 如果某个工具不可用，必须尝试替代方案。例如：`npm test` 不可用时检查 `package.json`；`gh pr create` 不可用时创建提交、生成 `.supercodex/PR_SUMMARY.md` 并记录原因。
+6. 如果某个工具不可用，必须尝试替代方案。例如：`npm test` 不可用时检查 `package.json`；`gh pr create` 不可用时完成本地提交。
 
 ### 1.3 目标完整性规则
 
@@ -116,11 +116,9 @@ SuperCodex 的正常执行线程边界必须服从 Plan Cycle，而不是 Stage 
   ARCHITECTURE.md              # 技术栈与架构设计文档
   PLAN.md                      # 分阶段执行计划与任务状态
   TRACEABILITY_MATRIX.md       # 最终目标到实现与测试的追踪矩阵
-  TEST_REPORT.md               # 自动测试结果、命令、日志摘要、失败修复记录
   CODE_REVIEW_REPORT.md        # 自动代码审查、安全审查、质量审查结果
   FINAL_ACCEPTANCE_REPORT.md   # 最终目标验收报告
   AUTO_DEV_STATE.json          # 外部循环器断点续跑状态；机器可读
-  PR_SUMMARY.md                # PR 摘要；无法创建远程 PR 时必须生成
 ```
 
 如项目已有同类文档，可以复用，但必须保证上述信息完整存在于 `.supercodex/` 目录下。
@@ -357,11 +355,11 @@ PRD 完成后必须检查：
 - [ ] Task 3.1: ...
 
 #### Milestone Gate
-- [ ] Tests / lint / typecheck / build passed, or blockers recorded
-- [ ] TEST_REPORT / CODE_REVIEW_REPORT / TRACEABILITY_MATRIX updated
+- [ ] Tests / lint / typecheck / build passed
+- [ ] CODE_REVIEW_REPORT / TRACEABILITY_MATRIX updated
 - [ ] PLAN / AUTO_DEV_STATE updated
 - [ ] Milestone commit created
-- [ ] Push attempted if remote is available, or fallback reason recorded
+- [ ] Push attempted if remote is available
 
 ### Milestone 2: 下一组能力闭环
 - Goal: ...
@@ -408,7 +406,6 @@ PRD 完成后必须检查：
   → 定位失败文件、函数、配置或依赖
   → 修改代码或配置
   → 重新运行相关命令
-  → 记录修复到 .supercodex/TEST_REPORT.md 或 .supercodex/AUTO_DEV_STATE.json
   → 继续执行
 ```
 
@@ -457,28 +454,6 @@ PRD 完成后必须检查：
 7. 重复代码和无用代码。
 8. 配置、依赖和文档一致性。
 
-### 9.4 报告
-
-必须创建或更新 `.supercodex/TEST_REPORT.md`，包含：
-
-```markdown
-# TEST_REPORT
-
-## Commands Executed
-- command: ...
-  result: pass/fail
-  log_summary: ...
-
-## Failures and Fixes
-- failure: ...
-  root_cause: ...
-  fix: ...
-  retest_result: ...
-
-## Coverage Against Final Goal
-- Goal 1: pass/fail, evidence: ...
-```
-
 所有失败必须修复并重新测试。不得在测试失败时进入最终交付。
 
 ---
@@ -496,7 +471,6 @@ PRD 完成后必须检查：
 - `.supercodex/ARCHITECTURE.md`
 - `.supercodex/PLAN.md`
 - `.supercodex/TRACEABILITY_MATRIX.md`
-- `.supercodex/TEST_REPORT.md`
 - `.supercodex/CODE_REVIEW_REPORT.md`
 - 当前代码和运行结果
 
@@ -583,33 +557,6 @@ PRD 完成后必须检查：
 2. 创建或切换合理分支。
 3. 提交代码：`git add ...`、`git commit ...`。
 4. 如果环境支持 GitHub CLI 或等价工具，创建 PR。
-5. 如果无法创建远程 PR，必须生成 `.supercodex/PR_SUMMARY.md`，说明分支、提交、变更摘要、测试结果、无法创建 PR 的原因和用户可执行的 PR 命令。
-
-`.supercodex/PR_SUMMARY.md` 必须包含：
-
-```markdown
-# PR_SUMMARY
-
-## Title
-...
-
-## Summary
-- ...
-
-## Changes
-- ...
-
-## Tests
-- ...
-
-## Final Acceptance
-- PASS, evidence: .supercodex/FINAL_ACCEPTANCE_REPORT.md
-
-## PR Status
-- Created: yes/no
-- Reason if no: ...
-- Suggested command: ...
-```
 
 ### 11.3 最终报告
 
@@ -618,7 +565,7 @@ PRD 完成后必须检查：
 1. 完成内容摘要。
 2. 测试命令和结果。
 3. 最终目标验收结果。
-4. PR 状态或 `.supercodex/PR_SUMMARY.md` 位置。
+4. 提交 hash 与 PR 状态。
 
 只有在最终验收 PASS 后，才能输出：
 
@@ -648,10 +595,8 @@ PRD 完成后必须检查：
     "architecture": ".supercodex/ARCHITECTURE.md",
     "plan": ".supercodex/PLAN.md",
     "traceability_matrix": ".supercodex/TRACEABILITY_MATRIX.md",
-    "test_report": ".supercodex/TEST_REPORT.md",
     "code_review_report": ".supercodex/CODE_REVIEW_REPORT.md",
-    "final_acceptance_report": ".supercodex/FINAL_ACCEPTANCE_REPORT.md",
-    "pr_summary": ".supercodex/PR_SUMMARY.md"
+    "final_acceptance_report": ".supercodex/FINAL_ACCEPTANCE_REPORT.md"
   },
   "clarification": {
     "status": "OPEN",
@@ -669,15 +614,11 @@ PRD 完成后必须检查：
     "remaining_task_ids": []
   },
   "execution": {
-    "completed_work": [],
-    "failed_items": [],
-    "last_commands": [],
     "next_action": "START_PHASE_0"
   },
   "quality": {
     "tests_status": "NOT_RUN",
-    "code_review_status": "NOT_RUN",
-    "blocking_issues": []
+    "code_review_status": "NOT_RUN"
   },
   "acceptance": {
     "status": "NOT_RUN",
@@ -687,8 +628,7 @@ PRD 完成后必须检查：
   "delivery": {
     "readme_updated": false,
     "git_committed": false,
-    "pr_created": false,
-    "pr_summary_path": null
+    "pr_created": false
   }
 }
 ```
@@ -735,7 +675,7 @@ PRD 完成后必须检查：
 7. `.supercodex/CODE_REVIEW_REPORT.md` 无阻塞问题。
 8. `.supercodex/FINAL_ACCEPTANCE_REPORT.md` 的 Decision 为 `PASS`。
 9. `README.md` 已更新。
-10. 已尝试提交并创建 PR；无法创建远程 PR 时已生成 `.supercodex/PR_SUMMARY.md`。
+10. 已完成本地 Git 提交；环境支持时已创建 PR。
 
 ---
 

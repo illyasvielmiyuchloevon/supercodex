@@ -1,6 +1,6 @@
 {
   "name": "@eirui/supercodex",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "type": "module",
   "description": "SuperCodex app-server controller for resumable long-running software delivery loops.",
   "bin": {

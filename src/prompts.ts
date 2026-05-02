@@ -47,7 +47,7 @@ You are being launched by supercodex, an external Codex app-server loop controll
 ## Mandatory Bootstrap
 1. Read AGENTS.md.
 2. Read \`.supercodex/AUTO_DEV_STATE.json\`, \`.supercodex/checkpoints.md\`, \`.supercodex/last-action.md\`, and \`.supercodex/last-error.md\` if present.
-3. Read \`.supercodex/FINAL_GOAL.md\`, \`.supercodex/CLARIFICATIONS.md\`, \`.supercodex/ASSUMPTIONS.md\`, \`.supercodex/PRD.md\`, \`.supercodex/ARCHITECTURE.md\`, \`.supercodex/PLAN.md\`, \`.supercodex/TRACEABILITY_MATRIX.md\`, \`.supercodex/TEST_REPORT.md\`, \`.supercodex/CODE_REVIEW_REPORT.md\`, \`.supercodex/FINAL_ACCEPTANCE_REPORT.md\`, and \`.supercodex/PR_SUMMARY.md\` if present.
+3. Read \`.supercodex/FINAL_GOAL.md\`, \`.supercodex/CLARIFICATIONS.md\`, \`.supercodex/ASSUMPTIONS.md\`, \`.supercodex/PRD.md\`, \`.supercodex/ARCHITECTURE.md\`, \`.supercodex/PLAN.md\`, \`.supercodex/TRACEABILITY_MATRIX.md\`, \`.supercodex/CODE_REVIEW_REPORT.md\`, and \`.supercodex/FINAL_ACCEPTANCE_REPORT.md\` if present.
 4. Check git status before edits.
 5. Resume from AUTO_DEV_STATE phase/current task/remaining tasks. Do not restart from scratch.
 6. If PLAN is exhausted, do not deliver. Run or refresh FINAL_ACCEPTANCE_REPORT against FINAL_GOAL first.
@@ -83,11 +83,11 @@ ${operatorBlock}
 ## Execution Contract
 ${executionGuidance}
 
-After all planned work is checked off, run Final Acceptance before marking delivery done. If acceptance fails, update FINAL_ACCEPTANCE_REPORT, set AUTO_DEV_STATE decision to FAIL_CONTINUE_NEXT_CYCLE, revise PRD / ARCHITECTURE / PLAN / TRACEABILITY_MATRIX, and continue the loop. Passing tests, completed PLAN tasks, committed code, pushed branches, or PR docs are not final completion by themselves.
+After all planned work is checked off, run Final Acceptance before marking delivery done. If acceptance fails, update FINAL_ACCEPTANCE_REPORT, set AUTO_DEV_STATE decision to FAIL_CONTINUE_NEXT_CYCLE, revise PRD / ARCHITECTURE / PLAN / TRACEABILITY_MATRIX, and continue the loop. Passing tests, completed PLAN tasks, committed code, or pushed branches are not final completion by themselves.
 
-Inside PLAN, use Stage as the execution unit and Milestone as the intermediate commit/push boundary. Do not create or request a fresh Codex thread because a Stage changed, a Milestone commit happened, or an intermediate push/PR document was updated; only PLAN completion leads to the full-project Final Acceptance review thread.
+Inside PLAN, use Stage as the execution unit and Milestone as the intermediate commit/push boundary. Do not create or request a fresh Codex thread because a Stage changed, a Milestone commit happened, or an intermediate push happened; only PLAN completion leads to the full-project Final Acceptance review thread.
 
-Do not ask the user after Phase 0. If an external credential, network, or remote Git permission is unavailable, record the blocker in TEST_REPORT, CODE_REVIEW_REPORT, FINAL_ACCEPTANCE_REPORT, or PR_SUMMARY as appropriate, and continue with local substitutes where possible.
+Do not ask the user after Phase 0. If an external credential, network, or remote Git permission is unavailable, continue with local substitutes where possible.
 ${previousBlock}
 `;
 }

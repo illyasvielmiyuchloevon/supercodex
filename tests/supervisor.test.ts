@@ -399,14 +399,14 @@ async function writeProjectState(project: string): Promise<void> {
       decision: "IN_PROGRESS",
       clarification: { status: "CLOSED", asked_count: 0, max_questions: 10, pending_questions: [], answered_questions: [] },
       plan: { current_cycle: "Cycle 1", current_stage: "stage-2", current_task_id: null, completed_task_ids: ["stage-1-task-1"], remaining_task_ids: ["stage-2-task-1"] },
-      execution: { next_action: "EXECUTE_NEXT_PLAN_TASK", completed_work: [], failed_items: [], last_commands: [] },
-      quality: { tests_status: "NOT_RUN", code_review_status: "NOT_RUN", blocking_issues: [] },
+      execution: { next_action: "EXECUTE_NEXT_PLAN_TASK" },
+      quality: { tests_status: "NOT_RUN", code_review_status: "NOT_RUN" },
       acceptance: { status: "NOT_RUN", decision: "PENDING", remaining_gaps: [] },
-      delivery: { readme_updated: false, git_committed: false, pr_created: false, pr_summary_path: null },
+      delivery: { readme_updated: false, git_committed: false, pr_created: false },
     }),
     "utf8",
   );
-  for (const doc of ["FINAL_GOAL.md", "CLARIFICATIONS.md", "ASSUMPTIONS.md", "PRD.md", "ARCHITECTURE.md", "PLAN.md", "TRACEABILITY_MATRIX.md", "TEST_REPORT.md", "CODE_REVIEW_REPORT.md", "FINAL_ACCEPTANCE_REPORT.md", "PR_SUMMARY.md"]) {
+  for (const doc of ["FINAL_GOAL.md", "CLARIFICATIONS.md", "ASSUMPTIONS.md", "PRD.md", "ARCHITECTURE.md", "PLAN.md", "TRACEABILITY_MATRIX.md", "CODE_REVIEW_REPORT.md", "FINAL_ACCEPTANCE_REPORT.md"]) {
     await writeFile(join(project, ".supercodex", doc), "# doc\n", "utf8");
   }
 }
@@ -425,15 +425,15 @@ async function writePlanCompleteProjectState(project: string): Promise<void> {
       decision: "IN_PROGRESS",
       clarification: { status: "CLOSED", asked_count: 0, max_questions: 10, pending_questions: [], answered_questions: [] },
       plan: { current_cycle: "Cycle 1", current_stage: null, current_task_id: null, completed_task_ids: ["1.1"], remaining_task_ids: [] },
-      execution: { next_action: "RUN_FINAL_ACCEPTANCE", completed_work: [], failed_items: [], last_commands: [] },
-      quality: { tests_status: "PASS", code_review_status: "PASS", blocking_issues: [] },
+      execution: { next_action: "RUN_FINAL_ACCEPTANCE" },
+      quality: { tests_status: "PASS", code_review_status: "PASS" },
       acceptance: { status: "NOT_RUN", decision: "PENDING", remaining_gaps: [] },
-      delivery: { readme_updated: false, git_committed: false, pr_created: false, pr_summary_path: null },
+      delivery: { readme_updated: false, git_committed: false, pr_created: false },
     }),
     "utf8",
   );
   const donePlan = "# PLAN\n\n## Stage 1: Done\n\n- [x] Task 1.1: Done\n";
-  for (const doc of ["FINAL_GOAL.md", "CLARIFICATIONS.md", "ASSUMPTIONS.md", "PRD.md", "ARCHITECTURE.md", "TRACEABILITY_MATRIX.md", "TEST_REPORT.md", "CODE_REVIEW_REPORT.md", "FINAL_ACCEPTANCE_REPORT.md", "PR_SUMMARY.md"]) {
+  for (const doc of ["FINAL_GOAL.md", "CLARIFICATIONS.md", "ASSUMPTIONS.md", "PRD.md", "ARCHITECTURE.md", "TRACEABILITY_MATRIX.md", "CODE_REVIEW_REPORT.md", "FINAL_ACCEPTANCE_REPORT.md"]) {
     await writeFile(join(project, ".supercodex", doc), "# doc\n", "utf8");
   }
   await writeFile(join(project, ".supercodex", "PLAN.md"), donePlan, "utf8");
@@ -453,15 +453,15 @@ async function writeDoneProjectState(project: string): Promise<void> {
       decision: "DELIVERED",
       clarification: { status: "CLOSED", asked_count: 0, max_questions: 10, pending_questions: [], answered_questions: [] },
       plan: { current_cycle: "Cycle 1", current_stage: null, current_task_id: null, completed_task_ids: ["1.1"], remaining_task_ids: [] },
-      execution: { next_action: "DONE", completed_work: [], failed_items: [], last_commands: [] },
-      quality: { tests_status: "PASS", code_review_status: "PASS", blocking_issues: [] },
+      execution: { next_action: "DONE" },
+      quality: { tests_status: "PASS", code_review_status: "PASS" },
       acceptance: { status: "PASS", decision: "PASS", remaining_gaps: [] },
-      delivery: { readme_updated: true, git_committed: true, pr_created: false, pr_summary_path: ".supercodex/PR_SUMMARY.md" },
+      delivery: { readme_updated: true, git_committed: true, pr_created: false },
     }),
     "utf8",
   );
   const donePlan = "# PLAN\n\n## Stage 1: Done\n\n- [x] Task 1.1: Done\n";
-  for (const doc of ["FINAL_GOAL.md", "CLARIFICATIONS.md", "ASSUMPTIONS.md", "PRD.md", "ARCHITECTURE.md", "TRACEABILITY_MATRIX.md", "TEST_REPORT.md", "CODE_REVIEW_REPORT.md", "FINAL_ACCEPTANCE_REPORT.md", "PR_SUMMARY.md"]) {
+  for (const doc of ["FINAL_GOAL.md", "CLARIFICATIONS.md", "ASSUMPTIONS.md", "PRD.md", "ARCHITECTURE.md", "TRACEABILITY_MATRIX.md", "CODE_REVIEW_REPORT.md", "FINAL_ACCEPTANCE_REPORT.md"]) {
     await writeFile(join(project, ".supercodex", doc), "# doc\n", "utf8");
   }
   await writeFile(join(project, ".supercodex", "PLAN.md"), donePlan, "utf8");

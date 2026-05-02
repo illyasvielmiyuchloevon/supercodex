@@ -23,10 +23,8 @@ export const requiredDocs = [
   "ARCHITECTURE.md",
   "PLAN.md",
   "TRACEABILITY_MATRIX.md",
-  "TEST_REPORT.md",
   "CODE_REVIEW_REPORT.md",
   "FINAL_ACCEPTANCE_REPORT.md",
-  "PR_SUMMARY.md",
 ] as const;
 
 const supercodexRoot = ".supercodex";
@@ -69,10 +67,8 @@ function autoDevStateTemplate(goal: string, timestamp: string, planTasks: PlanTa
       architecture: ".supercodex/ARCHITECTURE.md",
       plan: ".supercodex/PLAN.md",
       traceability_matrix: ".supercodex/TRACEABILITY_MATRIX.md",
-      test_report: ".supercodex/TEST_REPORT.md",
       code_review_report: ".supercodex/CODE_REVIEW_REPORT.md",
       final_acceptance_report: ".supercodex/FINAL_ACCEPTANCE_REPORT.md",
-      pr_summary: ".supercodex/PR_SUMMARY.md",
     },
     clarification: {
       status: clarificationClosed ? "CLOSED" : "OPEN",
@@ -90,15 +86,11 @@ function autoDevStateTemplate(goal: string, timestamp: string, planTasks: PlanTa
       remaining_task_ids: remainingTasks.map((task) => task.id),
     },
     execution: {
-      completed_work: [],
-      failed_items: [],
-      last_commands: [],
       next_action: nextAction,
     },
     quality: {
       tests_status: "NOT_RUN",
       code_review_status: "NOT_RUN",
-      blocking_issues: [],
     },
     acceptance: {
       status: "NOT_RUN",
@@ -109,7 +101,6 @@ function autoDevStateTemplate(goal: string, timestamp: string, planTasks: PlanTa
       readme_updated: false,
       git_committed: false,
       pr_created: false,
-      pr_summary_path: null,
     },
   };
 }
@@ -271,7 +262,7 @@ export function parsePlanTasks(planText: string): PlanTask[] {
 
 export function chooseNextWork(snapshot: ProjectSnapshot): WorkItem {
   if (snapshot.done) {
-    return { kind: "done", title: "Project delivered", reason: ".supercodex/AUTO_DEV_STATE.json decision is DELIVERED, final acceptance passed, and Phase 7 delivery/PR closure is recorded.", source: "auto-dev-state" };
+    return { kind: "done", title: "Project delivered", reason: ".supercodex/AUTO_DEV_STATE.json decision is DELIVERED, final acceptance passed, and Phase 7 delivery is complete.", source: "auto-dev-state" };
   }
   const criticalMissing = snapshot.missingDocs.filter((doc) => doc === autoDevStateFile || doc === "FINAL_GOAL.md" || doc === "PLAN.md");
   if (criticalMissing.length > 0) {
@@ -343,7 +334,7 @@ function chooseFromAutoDevState(autoDevState: JsonObject, planTasks: PlanTask[],
     return {
       kind: "stage_gate",
       title: "补齐最终验收与交付闭环证据",
-      reason: "AUTO_DEV_STATE decision is DELIVERED, but final acceptance or delivery/PR closure evidence is incomplete.",
+      reason: "AUTO_DEV_STATE decision is DELIVERED, but final acceptance or README/Git delivery closure evidence is incomplete.",
       source: "auto-dev-state",
     };
   }
@@ -352,7 +343,7 @@ function chooseFromAutoDevState(autoDevState: JsonObject, planTasks: PlanTask[],
     return {
       kind: "stage_gate",
       title: "执行 Phase 7 最终交付与 PR",
-      reason: "Final acceptance passed; AGENTS.md requires README/Git/PR_SUMMARY delivery closure.",
+      reason: "Final acceptance passed; AGENTS.md requires README/Git delivery closure.",
       source: "auto-dev-state",
     };
   }
@@ -632,14 +623,10 @@ ${goal || "Not provided yet."}
 | Final Goal | Acceptance Criteria | PRD Requirement | Architecture Component | Plan Task | Test/Review Evidence | Status |
 |---|---|---|---|---|---|---|
 `;
-    case "TEST_REPORT.md":
-      return "# TEST_REPORT\n\n## Commands Executed\n\n## Failures and Fixes\n\n## Coverage Against Final Goal\n";
     case "CODE_REVIEW_REPORT.md":
       return "# CODE_REVIEW_REPORT\n\nNo review has been recorded yet.\n";
     case "FINAL_ACCEPTANCE_REPORT.md":
       return "# FINAL_ACCEPTANCE_REPORT\n\n## Final Goal Coverage\n\n## PRD Coverage\n\n## Test Summary\n\n## Code Review Summary\n\n## Remaining Gaps\n\n## Decision\n- PENDING\n";
-    case "PR_SUMMARY.md":
-      return "# PR_SUMMARY\n\n## Title\n\n## Summary\n\n## Changes\n\n## Tests\n\n## Final Acceptance\n\n## PR Status\n- Created: no\n- Reason if no: Not attempted yet.\n";
     case "ARCHITECTURE.md":
     case "PRD.md":
       return `# ${doc.slice(0, -3)}
@@ -660,7 +647,7 @@ Goal: ${goal || "Not provided yet."}
 - Goal: Fill this milestone from PRD and ARCHITECTURE.
 - Stages: Stage 1-3
 - Commit boundary: Create a milestone commit after all included stages pass their checks.
-- Push policy: Push if a remote is available; otherwise record the blocker or fallback reason.
+- Push policy: Push if a remote is available.
 - Thread boundary: Continue in the same plan-cycle thread.
 
 #### Stage 1: Scope and Architecture Alignment
@@ -680,16 +667,16 @@ Goal: ${goal || "Not provided yet."}
 #### Stage 3: Milestone Quality Closure
 - [ ] Task 3.1: Close tests, review, traceability, and state for this milestone
   - Goal: Prove this milestone is stable before the intermediate commit.
-  - Files: .supercodex/TEST_REPORT.md, .supercodex/CODE_REVIEW_REPORT.md, .supercodex/AUTO_DEV_STATE.json, .supercodex/PLAN.md
-  - Steps: Run relevant checks, repair failures, update reports and state.
-  - Verify: Reports contain evidence and AUTO_DEV_STATE points to the next action.
+  - Files: .supercodex/CODE_REVIEW_REPORT.md, .supercodex/TRACEABILITY_MATRIX.md, .supercodex/AUTO_DEV_STATE.json, .supercodex/PLAN.md
+  - Steps: Run relevant checks, repair failures, update milestone completion state.
+  - Verify: PLAN/TRACEABILITY_MATRIX contain acceptance evidence and AUTO_DEV_STATE points to the next action.
 
 #### Milestone Gate
-- [ ] Relevant tests / lint / typecheck / build passed, or blockers recorded
-- [ ] TEST_REPORT / CODE_REVIEW_REPORT / TRACEABILITY_MATRIX updated
+- [ ] Relevant tests / lint / typecheck / build passed
+- [ ] CODE_REVIEW_REPORT / TRACEABILITY_MATRIX updated
 - [ ] PLAN / AUTO_DEV_STATE updated
 - [ ] Milestone commit created
-- [ ] Push attempted if remote is available, or fallback reason recorded
+- [ ] Push attempted if remote is available
 
 ### Milestone 2: Next Capability Closure
 - Goal: Add the next group of stages after Milestone 1 is clear.
@@ -730,7 +717,7 @@ function projectAgentsTemplateCandidates(): string[] {
 function fallbackProjectAgentsTemplate(): string {
   return `# AGENTS.md - SuperCodex Project Instructions
 
-This project is managed by SuperCodex using the lightweight AGENTS.md governance protocol. Before doing work, Codex must read \`.supercodex/AUTO_DEV_STATE.json\`, \`.supercodex/FINAL_GOAL.md\`, \`.supercodex/PLAN.md\`, \`.supercodex/TRACEABILITY_MATRIX.md\`, recent reports, checkpoints, and git status, then continue from the recorded phase/task instead of restarting from scratch.
+This project is managed by SuperCodex using the lightweight AGENTS.md governance protocol. Before doing work, Codex must read \`.supercodex/AUTO_DEV_STATE.json\`, \`.supercodex/FINAL_GOAL.md\`, \`.supercodex/PLAN.md\`, \`.supercodex/TRACEABILITY_MATRIX.md\`, \`.supercodex/CODE_REVIEW_REPORT.md\`, \`.supercodex/FINAL_ACCEPTANCE_REPORT.md\`, checkpoints, and git status, then continue from the recorded phase/task instead of restarting from scratch.
 
 Use available sub-agent, worker, explorer, tester, or reviewer capabilities when they materially help: independent exploration, disjoint implementation ownership, repeated failure analysis, parallel testing, code review, security review, or final-goal coverage review. Do not use them for tiny tasks or overlapping write scopes. The main agent remains responsible for integration, verification, and governance updates.
 
@@ -744,16 +731,14 @@ Required durable governance artifacts:
 - \`.supercodex/ARCHITECTURE.md\`
 - \`.supercodex/PLAN.md\`
 - \`.supercodex/TRACEABILITY_MATRIX.md\`
-- \`.supercodex/TEST_REPORT.md\`
 - \`.supercodex/CODE_REVIEW_REPORT.md\`
 - \`.supercodex/FINAL_ACCEPTANCE_REPORT.md\`
-- \`.supercodex/PR_SUMMARY.md\`
 
-\`.supercodex/AUTO_DEV_STATE.json\` is the machine-readable scheduling source. Markdown files are the human-readable goal, plan, evidence, review, acceptance, and PR artifacts. Do not recreate old heavy docs trees unless the user explicitly asks for them.
+\`.supercodex/AUTO_DEV_STATE.json\` is the machine-readable scheduling source. Markdown files are the human-readable goal, plan, traceability, review, and final acceptance artifacts. Do not recreate old heavy docs trees unless the user explicitly asks for them.
 
-Only Phase 0 may ask the user blocking clarification questions. After Phase 0, fix errors autonomously, keep AUTO_DEV_STATE valid JSON through atomic writes, and do not claim delivery until FINAL_ACCEPTANCE_REPORT says PASS and the delivery/PR step is recorded.
+Only Phase 0 may ask the user blocking clarification questions. After Phase 0, fix errors autonomously, keep AUTO_DEV_STATE valid JSON through atomic writes, and do not claim delivery until FINAL_ACCEPTANCE_REPORT says PASS and Phase 7 delivery is complete.
 
-\`.supercodex/PLAN.md\` should group Stage tasks inside Cycle and Milestone sections. Stage remains the execution unit; Milestone is the intermediate commit/push boundary. Do not create a fresh Codex thread for Stage changes, Milestone commits, pushes, or PR-document updates. Phase 7 still owns the final commit/PR closure after final acceptance passes.
+\`.supercodex/PLAN.md\` should group Stage tasks inside Cycle and Milestone sections. Stage remains the execution unit; Milestone is the intermediate commit/push boundary. Do not create a fresh Codex thread for Stage changes, Milestone commits, or pushes. Phase 7 still owns the final commit/PR closure after final acceptance passes.
 `;
 }
 
@@ -779,15 +764,12 @@ function autoDevPhaseLocked(autoDevState: JsonObject): boolean {
 
 function autoDevStateDelivered(autoDevState: JsonObject, docsPresent: Record<string, boolean>): boolean {
   const delivery = objectValue(autoDevState.delivery);
-  const prClosed = Boolean(delivery.pr_created) || Boolean(stringOrNull(delivery.pr_summary_path));
   return (
     stringValue(autoDevState.decision, "") === "DELIVERED" &&
     Boolean(docsPresent["FINAL_ACCEPTANCE_REPORT.md"]) &&
-    Boolean(docsPresent["PR_SUMMARY.md"]) &&
     acceptancePassed(autoDevState) &&
     Boolean(delivery.readme_updated) &&
-    Boolean(delivery.git_committed) &&
-    prClosed
+    Boolean(delivery.git_committed)
   );
 }
 

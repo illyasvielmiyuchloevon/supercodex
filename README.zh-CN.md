@@ -2,7 +2,7 @@
 
 SuperCodex 是一个 TypeScript/Node.js 编写的 Codex CLI 外部监督器。它通过正式的 `codex app-server --listen stdio://` JSON-RPC 接口控制 Codex 的 thread/turn 生命周期，把项目运行状态保存到 `.supercodex/`，并提供 OpenTUI/Solid 终端界面，用于长时间、可恢复、可干预的软件开发流程。
 
-当前版本：`0.13.0`（0.13 版本）。
+当前版本：`0.13.1`（0.13 补丁版本）。
 
 当前 0.13 版本的正式运行架构只有 `codex app-server`。旧的一次性 runner 和手写 raw-mode TUI 只保留为兼容/降级路径，不再是正式主路径。
 
@@ -255,10 +255,8 @@ supercodex run --project C:\path\to\project --run-id main
   ARCHITECTURE.md
   PLAN.md
   TRACEABILITY_MATRIX.md
-  TEST_REPORT.md
   CODE_REVIEW_REPORT.md
   FINAL_ACCEPTANCE_REPORT.md
-  PR_SUMMARY.md
   progress.md
   checkpoints.md
   last-action.md
