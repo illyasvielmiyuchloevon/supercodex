@@ -6,7 +6,13 @@ Current version: `0.11.0` (0.11 release). License: MIT.
 
 ## 1. Install the Current Version
 
-From the SuperCodex repository:
+Install the public npm package:
+
+```powershell
+npm install -g @eirui/supercodex
+```
+
+For local development from the SuperCodex repository:
 
 ```powershell
 cd C:\supercodex
@@ -40,13 +46,13 @@ codex app-server --help
 For a repository installed with `npm link`, remove the global command:
 
 ```powershell
-npm unlink -g supercodex
+npm unlink -g @eirui/supercodex
 ```
 
-For a packaged global install, use:
+For the public npm package, use:
 
 ```powershell
-npm uninstall -g supercodex
+npm uninstall -g @eirui/supercodex
 ```
 
 Optional local cleanup inside the SuperCodex repository:

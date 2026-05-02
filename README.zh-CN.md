@@ -35,7 +35,13 @@ git --version
 
 ## 安装
 
-在 SuperCodex 仓库中执行：
+从 npm 安装：
+
+```powershell
+npm install -g @eirui/supercodex
+```
+
+如果要从本仓库进行本地开发安装：
 
 ```powershell
 cd C:\supercodex
@@ -56,13 +62,13 @@ supercodex status --project C:\supercodex
 如果你是通过本仓库 `npm link` 安装的，移除全局命令：
 
 ```powershell
-npm unlink -g supercodex
+npm unlink -g @eirui/supercodex
 ```
 
-如果你安装的是全局发布包，使用：
+如果你安装的是公开 npm 包，使用：
 
 ```powershell
-npm uninstall -g supercodex
+npm uninstall -g @eirui/supercodex
 ```
 
 可选：清理 SuperCodex 仓库里的本地构建和依赖：

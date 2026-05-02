@@ -35,7 +35,13 @@ git --version
 
 ## Install
 
-From this repository:
+From npm:
+
+```powershell
+npm install -g @eirui/supercodex
+```
+
+For local development from this repository:
 
 ```powershell
 cd C:\supercodex
@@ -56,13 +62,13 @@ supercodex status --project C:\supercodex
 If you installed this repository with `npm link`, remove the global command:
 
 ```powershell
-npm unlink -g supercodex
+npm unlink -g @eirui/supercodex
 ```
 
-If you installed a packaged global build, remove it with:
+If you installed the public npm package, remove it with:
 
 ```powershell
-npm uninstall -g supercodex
+npm uninstall -g @eirui/supercodex
 ```
 
 Optional local cleanup inside the SuperCodex repository:

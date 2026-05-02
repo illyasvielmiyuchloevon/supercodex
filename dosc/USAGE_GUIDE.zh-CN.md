@@ -6,7 +6,13 @@
 
 ## 1. 先确认你装的是当前版本
 
-在 SuperCodex 仓库中：
+安装公开 npm 包：
+
+```powershell
+npm install -g @eirui/supercodex
+```
+
+如果要从 SuperCodex 仓库进行本地开发安装：
 
 ```powershell
 cd C:\supercodex
@@ -40,13 +46,13 @@ codex app-server --help
 如果你是通过本仓库 `npm link` 安装的，移除全局命令：
 
 ```powershell
-npm unlink -g supercodex
+npm unlink -g @eirui/supercodex
 ```
 
-如果你安装的是全局发布包，使用：
+如果你安装的是公开 npm 包，使用：
 
 ```powershell
-npm uninstall -g supercodex
+npm uninstall -g @eirui/supercodex
 ```
 
 可选：清理 SuperCodex 仓库里的本地构建和依赖：

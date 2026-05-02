@@ -1,15 +1,28 @@
 {
-  "name": "supercodex",
+  "name": "@eirui/supercodex",
   "version": "0.11.0",
-  "private": true,
   "type": "module",
   "description": "SuperCodex app-server controller for resumable long-running software delivery loops.",
   "bin": {
-    "supercodex": "./dist/src/cli.js"
+    "supercodex": "dist/src/cli.js"
+  },
+  "files": [
+    "dist/src/",
+    "AGENTS.md",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE",
+    "dosc/USAGE_GUIDE.md",
+    "dosc/USAGE_GUIDE.zh-CN.md"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "prebuild": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm test",
     "test": "npm run build && node --test dist/tests/*.test.js && npm run test:opentui",
     "test:node": "npm run build && node --test dist/tests/*.test.js",
     "test:opentui": "bun test tests/opentui-smoke.test.tsx",
