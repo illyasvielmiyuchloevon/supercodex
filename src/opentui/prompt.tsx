@@ -332,7 +332,7 @@ export function AgentPrompt(props: {
           initialValue={props.initialValue}
           wrapMode="word"
           scrollMargin={2}
-          placeholder={props.mode === "managed" ? "Type a task, /goal, or / command" : "Type an intervention or / command"}
+          placeholder={props.mode === "managed" ? "Type a message, /goal, or / command" : "Type an intervention or / command"}
           placeholderColor={props.theme.muted}
           textColor={props.theme.text}
           focusedTextColor={props.theme.text}

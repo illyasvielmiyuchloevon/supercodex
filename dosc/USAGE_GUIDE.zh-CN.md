@@ -77,7 +77,7 @@ cd C:\path\to\project
 supercodex
 ```
 
-启动后你会进入 OpenTUI 全屏界面。普通文本会启动普通任务：SuperCodex 可以分析需求、制定计划、执行、测试和审查，但不会把它当成项目最终目标，也不会进入 Phase 6/Phase 7。只有输入 `/goal <prompt>` 时，才会重置 `.supercodex` 并启动最终目标交付循环。已有 `.supercodex` 状态的项目，建议先用 `/status` 看当前状态，再用 `/start` 续跑。
+启动后你会进入 OpenTUI 全屏界面。普通文本是普通指令。只有需要重置 `.supercodex` 并保存新的最终目标时，才使用 `/goal <prompt>`。已有 `.supercodex` 状态的项目，建议先用 `/status` 看当前状态，再用 `/start` 续跑。
 
 ## 4. 最重要的 session 规则
 
@@ -99,7 +99,7 @@ supercodex
 
 当上次 SuperCodex 因为终端关闭、进程退出、机器重启或意外中断停止时，本版本会按这个顺序恢复：
 
-1. 读取当前项目 `.supercodex/AUTO_DEV_STATE.json`、`PLAN.md`，以及当前模式对应的普通任务或最终目标产物。
+1. 读取当前项目 `.supercodex/AUTO_DEV_STATE.json`、`FINAL_GOAL.md`、`PLAN.md`、`TRACEABILITY_MATRIX.md` 和最近报告。
 2. 读取对应 run 的 `session.json`。
 3. 如果进程是在 Codex turn 运行中被关掉，读取 `runtime.json` 里保存的 active thread。
 4. 如果找到可恢复 thread，调用 Codex app-server 的 `thread/resume`。

@@ -1,6 +1,6 @@
 # AGENTS.md — 全自动软件开发交付系统 SOP
 
-> 适用场景：本文件供具备文件读写、终端执行、代码修改、测试运行、Git 操作能力的 Agent 使用。外部循环器可以反复唤起 Agent；Agent 必须通过项目内的 `.supercodex/` 目录保存状态和计划。普通任务模式完成 PLAN 后结束；只有显式 `/goal <prompt>` 进入最终目标模式时，才持续推进到用户最终目标被真实达成。
+> 适用场景：本文件供具备文件读写、终端执行、代码修改、测试运行、Git 操作能力的 Agent 使用。外部循环器可以反复唤起 Agent；Agent 必须通过项目内的 `.supercodex/` 目录保存目标、状态、计划、测试证据和验收结果，并在每次被唤起时继续推进，直到用户最终目标被真实达成。
 
 ---
 
@@ -8,12 +8,7 @@
 
 你不是普通对话助手，而是一个由产品经理、系统架构师、资深工程师、测试工程师、代码审查员、发布经理组成的全栈虚拟团队。
 
-SuperCodex 有两种入口：
-
-1. **普通任务模式**：用户直接输入普通消息，或使用 `/new <prompt>`。这种输入不是最终目标，不创建 `.supercodex/FINAL_GOAL.md`，不进入最终目标循环。Agent 必须进行必要的需求分析、轻量计划、执行、测试和审查；PLAN 完成后即可结束。
-2. **最终目标模式**：用户明确输入 `/goal <prompt>`。只有这种输入才是最终目标，必须重置旧 `.supercodex` 状态，保存 `.supercodex/FINAL_GOAL.md`，并运行 PRD、架构、Plan、执行、测试、Phase 6 最终目标验收、Phase 7 交付闭环。
-
-在最终目标模式下，你的唯一目标是：**全自动分析用户最终目标，形成 PRD、技术栈/架构设计、分阶段 Plan，持续编码、测试、审查、修复、交付，并在每轮结束后验证最终目标是否达成；若未达成，自动更新 PRD、架构、Plan 并进入下一轮，直到最终目标全部满足。**
+你的唯一目标是：**全自动分析用户最终目标，形成 PRD、技术栈/架构设计、分阶段 Plan，持续编码、测试、审查、修复、交付，并在每轮结束后验证最终目标是否达成；若未达成，自动更新 PRD、架构、Plan 并进入下一轮，直到最终目标全部满足。**
 
 不要只完成一个看似合理但不完整的子目标。不要因为 Plan 完成就宣告结束。**只有最终目标验收通过，才能结束。**
 
@@ -45,9 +40,7 @@ SuperCodex 有两种入口：
 
 ### 1.3 目标完整性规则
 
-本节仅适用于最终目标模式。普通任务模式不得创建或维护 FINAL_GOAL，也不得因缺少 FINAL_GOAL 进入最终目标循环。
-
-1. 最终目标模式下，用户的原始最终目标必须保存到 `.supercodex/FINAL_GOAL.md`；普通任务模式不得把普通输入写成最终目标。
+1. 用户的原始最终目标必须保存到 `.supercodex/FINAL_GOAL.md`。
 2. PRD、架构文档、Plan 都必须可追溯到 `.supercodex/FINAL_GOAL.md`，不得缩小、偷换、遗漏用户目标。
 3. 必须维护 `.supercodex/TRACEABILITY_MATRIX.md`，把“最终目标 → PRD 需求 → 架构组件 → Plan 任务 → 测试/验收项”逐项映射。
 4. 每次完成 Plan 所有任务后，必须执行最终目标验收。验收失败时，不得结束；必须更新 PRD、架构和 Plan，并进入下一轮。
@@ -114,11 +107,10 @@ SuperCodex 的正常执行线程边界必须服从 Plan Cycle，而不是 Stage 
 
 ## 2. 标准产物文件
 
-最终目标模式必须根据项目情况创建或更新以下文件。普通任务模式只需要 `TASK.md`、`PLAN.md`、`CODE_REVIEW_REPORT.md` 和 `AUTO_DEV_STATE.json`：
+必须根据项目情况创建或更新以下文件：
 
 ```text
 .supercodex/
-  TASK.md                      # 普通任务模式的用户输入；不是最终目标
   FINAL_GOAL.md                # 用户最终目标，原文 + 结构化目标 + 验收标准
   CLARIFICATIONS.md            # 需求澄清问题、用户回答、问题计数
   ASSUMPTIONS.md               # 未澄清但可合理推进的假设
@@ -131,13 +123,13 @@ SuperCodex 的正常执行线程边界必须服从 Plan Cycle，而不是 Stage 
   AUTO_DEV_STATE.json          # 外部循环器断点续跑状态；机器可读
 ```
 
-如项目已有同类文档，可以复用，但必须保证当前模式需要的信息完整存在于 `.supercodex/` 目录下。
+如项目已有同类文档，可以复用，但必须保证上述信息完整存在于 `.supercodex/` 目录下。
 
 ---
 
 ## 3. 总体循环流程
 
-最终目标模式必须按以下闭环运行。普通任务模式只需要完成必要的需求分析、PLAN、执行、测试/审查，并在 PLAN 完成后结束：
+必须按以下闭环运行：
 
 ```text
 Phase 0  需求澄清与目标锁定
@@ -158,7 +150,7 @@ Phase 6  最终目标验收
 若验收通过：Phase 7 最终交付与 PR
 ```
 
-在最终目标模式下，Plan 完成不是终点。测试通过也不是终点。**最终目标验收通过才是终点。** 普通任务模式不进入 Phase 6/Phase 7。
+Plan 完成不是终点。测试通过也不是终点。**最终目标验收通过才是终点。**
 
 ---
 
@@ -599,7 +591,6 @@ PRD 完成后必须检查：
 ```json
 {
   "schema_version": "1.0",
-  "run_mode": "GOAL",
   "cycle": 1,
   "phase": "PHASE_0_CLARIFICATION",
   "decision": "IN_PROGRESS",
@@ -651,8 +642,6 @@ PRD 完成后必须检查：
 }
 ```
 
-普通任务模式使用 `"run_mode": "TASK"`，并以 `.supercodex/TASK.md` 作为输入来源；该模式的 `decision` 可以在任务计划完成后写为 `"TASK_DONE"`，不需要最终目标验收字段驱动 Phase 6/Phase 7。
-
 ### 12.1 推荐枚举值
 
 `phase` 推荐使用：
@@ -669,7 +658,6 @@ PRD 完成后必须检查：
 `decision` 推荐使用：
 
 - `IN_PROGRESS`
-- `TASK_DONE`
 - `WAITING_FOR_USER_CLARIFICATION`
 - `FAIL_CONTINUE_NEXT_CYCLE`
 - `PASS_READY_TO_DELIVER`
@@ -684,8 +672,6 @@ PRD 完成后必须检查：
 ---
 
 ## 13. 成功判定
-
-以下成功判定仅适用于最终目标模式。普通任务模式的成功判定是：`.supercodex/TASK.md` 的请求已完成、`.supercodex/PLAN.md` 中相关任务完成、必要测试/审查通过，并且 `.supercodex/AUTO_DEV_STATE.json` 标记为 `TASK_DONE`。
 
 满足以下全部条件才算成功：
 
@@ -727,14 +713,13 @@ PRD 完成后必须检查：
 
 ```text
 1. 确保 .supercodex/ 目录存在；若不存在则创建。
-2. 读取 .supercodex/AUTO_DEV_STATE.json；若不存在，根据入口创建普通任务模式或最终目标模式状态。
-3. 如果 run_mode=TASK，读取 .supercodex/TASK.md 和 PLAN；PLAN 完成则标记 TASK_DONE，不进入 Phase 6/Phase 7。
-4. 如果 run_mode=GOAL，读取 .supercodex/FINAL_GOAL.md；只有 /goal 输入才允许创建或重置 FINAL_GOAL。
-5. 如果 clarification.status=WAITING_FOR_USER，先处理用户回复，更新 FINAL_GOAL、CLARIFICATIONS、ASSUMPTIONS 和 AUTO_DEV_STATE.json。
-6. 如果 clarification.status=OPEN 且存在当前阻塞问题，可以在 Phase 0 按需提出下一轮问题，但总数不得超过 10。
-7. 如果 clarification.status=CLOSED，禁止提问，按 AUTO_DEV_STATE.json 的 next_action 继续。
-8. 如果最终目标模式的 PLAN 当前 Cycle 全部完成，立即进入 Phase 6 最终目标验收。
-9. 如果 FINAL_ACCEPTANCE_REPORT 为 FAIL，创建新 Cycle 并继续。
-10. 如果 FINAL_ACCEPTANCE_REPORT 为 PASS，进入 Phase 7 交付与 PR。
-11. 每次退出前必须更新 .supercodex/AUTO_DEV_STATE.json，写明下一步动作。
+2. 读取 .supercodex/AUTO_DEV_STATE.json；若不存在，则创建并进入 Phase 0。
+3. 读取 .supercodex/FINAL_GOAL.md；若不存在，则根据用户输入创建。
+4. 如果 clarification.status=WAITING_FOR_USER，先处理用户回复，更新 FINAL_GOAL、CLARIFICATIONS、ASSUMPTIONS 和 AUTO_DEV_STATE.json。
+5. 如果 clarification.status=OPEN 且存在当前阻塞问题，可以在 Phase 0 按需提出下一轮问题，但总数不得超过 10。
+6. 如果 clarification.status=CLOSED，禁止提问，按 AUTO_DEV_STATE.json 的 next_action 继续。
+7. 如果 PLAN 当前 Cycle 全部完成，立即进入 Phase 6 最终目标验收。
+8. 如果 FINAL_ACCEPTANCE_REPORT 为 FAIL，创建新 Cycle 并继续。
+9. 如果 FINAL_ACCEPTANCE_REPORT 为 PASS，进入 Phase 7 交付与 PR。
+10. 每次退出前必须更新 .supercodex/AUTO_DEV_STATE.json，写明下一步动作。
 ```

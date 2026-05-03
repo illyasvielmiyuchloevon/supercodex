@@ -36,7 +36,7 @@ import { TuiTranscriptSource } from "./tui-transcript.js";
 import { managedPlainTextAction, shouldCreateFreshRunForManagedMessage } from "./managed-input.js";
 import { runOpenTuiFrontend } from "./opentui-launcher.js";
 import { isTextareaNewlineKey } from "./opentui/textarea-keybindings.js";
-import type { JsonObject, SupercodexRunMode } from "./types.js";
+import type { JsonObject } from "./types.js";
 import {
   displayCellWidth,
   padRightCells,
@@ -77,7 +77,7 @@ async function runLineAttach(options: AttachOptions): Promise<number> {
   console.log(`run: ${activeRunId}`);
   console.log(
     options.managed
-      ? "Type a task to start normally, /goal <prompt> for a final-goal loop, or /start [run-id] to resume. Type /help for commands."
+      ? "Type a message, /goal <prompt> to reset FINAL_GOAL, or /start [run-id] to resume. Type /help for commands."
       : "Type /help for commands. Plain text is sent as a Codex steering message.",
   );
   printSlashHelp();
@@ -129,7 +129,6 @@ async function runLineAttach(options: AttachOptions): Promise<number> {
             runId: activeRunId,
             goalOrInstruction: goalRequest,
             operatorIntervention: false,
-            runMode: "goal",
             resetSupercodexState: true,
             authManager: options.authManager,
             appServerOptions: options.appServerOptions ?? defaultAppServerOptions,
@@ -166,8 +165,8 @@ async function runLineAttach(options: AttachOptions): Promise<number> {
             project,
             runId: activeRunId,
             goalOrInstruction: newRequest,
-            operatorIntervention: false,
-            runMode: "task",
+            operatorIntervention: true,
+            skipScaffold: true,
             authManager: options.authManager,
             appServerOptions: options.appServerOptions ?? defaultAppServerOptions,
             current: supervisorPromise,
@@ -247,23 +246,23 @@ async function runLineAttach(options: AttachOptions): Promise<number> {
             activeRunStarted,
             activeRunIsResume,
           });
-          if (action === "new_task") {
+          if (action === "new_message") {
             activeRunId = createFreshRunId();
             activeRunStarted = false;
             activeRunIsResume = false;
             currentEventLog = null;
             currentStderrLog = null;
             tail = new LogTail();
-            action = "initial_task";
+            action = "initial_message";
           }
-          if (action === "initial_task") {
+          if (action === "initial_message") {
             activeRunStarted = true;
             const started = await startManagedSupervisor({
               project,
               runId: activeRunId,
               goalOrInstruction: line.trim(),
-              operatorIntervention: false,
-              runMode: "task",
+              operatorIntervention: true,
+              skipScaffold: true,
               authManager: options.authManager,
               appServerOptions: options.appServerOptions ?? defaultAppServerOptions,
               current: supervisorPromise,
@@ -285,6 +284,7 @@ async function runLineAttach(options: AttachOptions): Promise<number> {
               runId: activeRunId,
               goalOrInstruction: "",
               operatorIntervention: true,
+              skipScaffold: true,
               authManager: options.authManager,
               appServerOptions: options.appServerOptions ?? defaultAppServerOptions,
               current: supervisorPromise,
@@ -318,7 +318,7 @@ async function startManagedSupervisor(input: {
   appServerOptions: AppServerOptions;
   current: Promise<number> | null;
   operatorIntervention?: boolean;
-  runMode?: SupercodexRunMode;
+  skipScaffold?: boolean;
   resetSupercodexState?: boolean;
   report?: (message: string) => void;
 }): Promise<{ task: Promise<number> | null }> {
@@ -337,7 +337,7 @@ async function startManagedSupervisor(input: {
   const config = {
     ...defaultSupervisorConfig(input.project),
     goal: input.operatorIntervention ? "" : instruction,
-    runMode: input.runMode ?? "auto",
+    skipScaffold: Boolean(input.skipScaffold),
     resetSupercodexState: Boolean(input.resetSupercodexState),
     runId: input.runId,
     authManager: input.authManager,
@@ -464,7 +464,7 @@ class TerminalTui {
     await this.refreshStatus();
     this.enterScreen();
     await this.pollLogs();
-    this.addLog(this.options.managed ? "Managed TUI ready. Type a task normally, /goal <prompt> for a final-goal loop, or /start [run-id] to resume. Type / for commands." : "Attach-only TUI ready. Type / for commands or plain text to steer.");
+    this.addLog(this.options.managed ? "Managed TUI ready. Type a message, /goal <prompt> to reset FINAL_GOAL, or /start [run-id] to resume. Type / for commands." : "Attach-only TUI ready. Type / for commands or plain text to steer.");
     this.startPolling();
     this.render();
 
@@ -882,18 +882,18 @@ class TerminalTui {
           activeRunStarted: this.activeRunStarted,
           activeRunIsResume: this.activeRunIsResume,
         });
-        if (action === "new_task") {
+        if (action === "new_message") {
           this.switchActiveRun(createFreshRunId(), "fresh");
-          action = "initial_task";
+          action = "initial_message";
         }
-        if (action === "initial_task") {
+        if (action === "initial_message") {
           this.activeRunStarted = true;
           const started = await startManagedSupervisor({
             project: this.project,
             runId: this.activeRunId,
             goalOrInstruction: line,
-            operatorIntervention: false,
-            runMode: "task",
+            operatorIntervention: true,
+            skipScaffold: true,
             authManager: this.options.authManager,
             appServerOptions: this.options.appServerOptions ?? defaultAppServerOptions,
             current: this.supervisorPromise,
@@ -920,6 +920,7 @@ class TerminalTui {
             runId: this.activeRunId,
             goalOrInstruction: "",
             operatorIntervention: true,
+            skipScaffold: true,
             authManager: this.options.authManager,
             appServerOptions: this.options.appServerOptions ?? defaultAppServerOptions,
             current: this.supervisorPromise,
@@ -984,8 +985,8 @@ class TerminalTui {
       project: this.project,
       runId: this.activeRunId,
       goalOrInstruction: value,
-      operatorIntervention: false,
-      runMode: "task",
+      operatorIntervention: true,
+      skipScaffold: true,
       authManager: this.options.authManager,
       appServerOptions: this.options.appServerOptions ?? defaultAppServerOptions,
       current: this.supervisorPromise,
@@ -1025,7 +1026,6 @@ class TerminalTui {
       runId: this.activeRunId,
       goalOrInstruction: value,
       operatorIntervention: false,
-      runMode: "goal",
       resetSupercodexState: true,
       authManager: this.options.authManager,
       appServerOptions: this.options.appServerOptions ?? defaultAppServerOptions,

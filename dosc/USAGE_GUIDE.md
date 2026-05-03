@@ -77,7 +77,7 @@ cd C:\path\to\project
 supercodex
 ```
 
-This starts the OpenTUI full-screen interface. Plain text starts an ordinary task: SuperCodex may analyze, plan, execute, test, and review it, but it is not treated as the project final goal and it does not enter Phase 6/Phase 7. Use `/goal <prompt>` when you want to reset `.supercodex` and start a final-goal delivery loop. For a project that already has `.supercodex` state, use `/status` first, then `/start` to continue saved work.
+This starts the OpenTUI full-screen interface. Plain text is a normal instruction. Use `/goal <prompt>` only when you want to reset `.supercodex` and save a new final goal. For a project that already has `.supercodex` state, use `/status` first, then `/start` to continue saved work.
 
 ## 4. Session Rules
 
@@ -99,7 +99,7 @@ starts the saved `main` run.
 
 After an unexpected terminal close, process exit, machine restart, or interrupted SuperCodex session, this version restores in this order:
 
-1. Reads project `.supercodex/AUTO_DEV_STATE.json`, `PLAN.md`, and the mode-specific task or final-goal artifacts.
+1. Reads project `.supercodex/AUTO_DEV_STATE.json`, `FINAL_GOAL.md`, `PLAN.md`, `TRACEABILITY_MATRIX.md`, and recent reports.
 2. Reads the selected run's `session.json`.
 3. If Codex was running when the process stopped, reads the active `runtime.json` thread.
 4. If a usable thread is found, calls Codex app-server `thread/resume`.

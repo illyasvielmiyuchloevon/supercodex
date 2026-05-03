@@ -29,7 +29,7 @@ import { canonicalSlashCommandName, type SlashCommandSuggestion } from "./tui-co
 import { TuiTranscriptSource } from "./tui-transcript.js";
 import { chooseNextWork, loadSnapshotForRun, loadSupervisorRuntime } from "./workspace.js";
 import { SUPERCODEX_VERSION } from "./version.js";
-import type { JsonObject, SupercodexRunMode } from "./types.js";
+import type { JsonObject } from "./types.js";
 import { managedPlainTextAction } from "./managed-input.js";
 import { readAgentTuiConfig, type AgentTuiConfig } from "./opentui/config";
 import { handleDialogKey as handleSharedDialogKey } from "./opentui/dialog-stack";
@@ -1367,7 +1367,7 @@ function OpenTuiRuntime(props: {
   onMount(() => {
     transcript.appendLocal(
       props.mode === "managed"
-        ? "OpenTUI managed frontend ready. Type a task to start normally, /goal <prompt> for a final-goal loop, or /start [run-id] to resume."
+        ? "OpenTUI managed frontend ready. Type a message, /goal <prompt> to reset FINAL_GOAL, or /start [run-id] to resume."
         : "OpenTUI attach frontend ready. Type an intervention or / command.",
     );
     publishTranscript();
@@ -1401,23 +1401,23 @@ function OpenTuiRuntime(props: {
         activeRunStarted: activeRunStarted(),
         activeRunIsResume: activeRunIsResume(),
       });
-      if (action === "new_task") {
+      if (action === "new_message") {
         const previousRunId = runId();
         const nextRunId = createFreshRunId();
         setRunId(nextRunId);
         await copySupervisorSessionPreferences(props.project, previousRunId, nextRunId);
         transcript.reset();
         appendUser(transcript, publishTranscript, value);
-        action = "initial_task";
+        action = "initial_message";
       }
-      if (action === "initial_task") {
+      if (action === "initial_message") {
         setActiveRunStarted(true);
         setSupervisorTask(startSupervisor({
           project: props.project,
           runId: runId(),
           goalOrInstruction: value,
-          operatorIntervention: false,
-          runMode: "task",
+          operatorIntervention: true,
+          skipScaffold: true,
           authManager: props.authManager,
           appServerOptions: props.appServerOptions,
           transcript,
@@ -1434,6 +1434,7 @@ function OpenTuiRuntime(props: {
           runId: runId(),
           goalOrInstruction: "",
           operatorIntervention: true,
+          skipScaffold: true,
           authManager: props.authManager,
           appServerOptions: props.appServerOptions,
           transcript,
@@ -1559,8 +1560,8 @@ function OpenTuiRuntime(props: {
       project: props.project,
       runId: nextRunId,
       goalOrInstruction: value,
-      operatorIntervention: false,
-      runMode: "task",
+      operatorIntervention: true,
+      skipScaffold: true,
       authManager: props.authManager,
       appServerOptions: props.appServerOptions,
       transcript,
@@ -1595,7 +1596,6 @@ function OpenTuiRuntime(props: {
       runId: nextRunId,
       goalOrInstruction: value,
       operatorIntervention: false,
-      runMode: "goal",
       resetSupercodexState: true,
       authManager: props.authManager,
       appServerOptions: props.appServerOptions,
@@ -2218,7 +2218,7 @@ function startSupervisor(input: {
   runId: string;
   goalOrInstruction: string;
   operatorIntervention: boolean;
-  runMode?: SupercodexRunMode;
+  skipScaffold?: boolean;
   resetSupercodexState?: boolean;
   authManager: CodexAuthManager;
   appServerOptions: AppServerOptions;
@@ -2229,8 +2229,8 @@ function startSupervisor(input: {
   appendLocal(input.transcript, input.publishTranscript, `[supercodex] starting run ${input.runId}.`);
   const config = {
     ...defaultSupervisorConfig(input.project),
-    goal: input.goalOrInstruction,
-    runMode: input.runMode ?? "auto",
+    goal: input.operatorIntervention ? "" : input.goalOrInstruction,
+    skipScaffold: Boolean(input.skipScaffold),
     resetSupercodexState: Boolean(input.resetSupercodexState),
     runId: input.runId,
     authManager: input.authManager,
@@ -2238,8 +2238,13 @@ function startSupervisor(input: {
     appServerOptions: { ...input.appServerOptions, streamConsole: false },
     supervisorConsole: false,
   };
-  const task = new Supervisor(config)
-    .run()
+  const task = (async () => {
+    const instruction = input.goalOrInstruction.trim();
+    if (input.operatorIntervention && instruction) {
+      await requestSteer(input.project, instruction, input.runId);
+    }
+    return await new Supervisor(config).run();
+  })()
     .then((code) => {
       appendLocal(input.transcript, input.publishTranscript, `[supercodex] run stopped with code=${code}`);
       return code;

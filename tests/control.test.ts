@@ -335,7 +335,7 @@ test("managed plain input keeps a /start-selected run instead of opening fresh",
       activeRunStarted: false,
       activeRunIsResume: false,
     }),
-    "initial_task",
+    "initial_message",
   );
   assert.equal(
     managedPlainTextAction({
@@ -343,7 +343,7 @@ test("managed plain input keeps a /start-selected run instead of opening fresh",
       activeRunStarted: true,
       activeRunIsResume: false,
     }),
-    "new_task",
+    "new_message",
   );
   assert.equal(
     managedPlainTextAction({

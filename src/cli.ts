@@ -185,7 +185,6 @@ async function cmdRun(args: ParsedArgs): Promise<number> {
     dryRun,
     appServerOptions: appServerOptionsFromArgs(args),
     authManager: authManagerFromArgs(args),
-    runMode: stringFlag(args, "goal", "") ? "goal" : "auto",
     runId: sanitizeRunId(stringFlag(args, "run-id", "default")),
     supervisorConsole: !booleanFlag(args, "quiet-supercodex"),
   };

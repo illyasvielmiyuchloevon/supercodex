@@ -387,6 +387,36 @@ test("fresh TUI operator mode wraps the message while prioritizing it over unfin
   assert.doesNotMatch(capturedPrompt, /kind: task/);
 });
 
+test("fresh operator instruction does not scaffold FINAL_GOAL without /goal reset", async () => {
+  const project = await mkdtemp(join(tmpdir(), "supercodex-plain-instruction-"));
+  const message = "普通输入只执行这个请求";
+  await requestSteer(project, message, "session-plain");
+  let capturedPrompt = "";
+  const runner: Runner = {
+    async run(input) {
+      capturedPrompt = input.prompt;
+      return result("thr_plain");
+    },
+  };
+  const config = {
+    ...defaultSupervisorConfig(project),
+    maxCycles: 1,
+    operatorIntervention: true,
+    skipScaffold: true,
+    retryBaseSeconds: 0,
+    retryMaxSeconds: 0,
+    runId: "session-plain",
+  };
+
+  const code = await new Supervisor(config, runner, async () => undefined).run();
+
+  assert.equal(code, 0);
+  assert.match(capturedPrompt, /Runtime Operator Intervention/);
+  assert.match(capturedPrompt, new RegExp(message));
+  assert.doesNotMatch(capturedPrompt, /Not provided yet\./);
+  await assert.rejects(readFile(join(project, ".supercodex", "FINAL_GOAL.md"), "utf8"));
+});
+
 async function writeProjectState(project: string): Promise<void> {
   await import("node:fs/promises").then(async ({ mkdir }) => {
     await mkdir(join(project, ".supercodex", "runtime"), { recursive: true });
