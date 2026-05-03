@@ -203,6 +203,9 @@ export class Supervisor {
       const runner = this.createRunner(runtimeOptions);
       const result = await runner.run({ prompt, project, threadId, resume, runId, stageId: work.stageId, taskId: work.taskId, workKind: work.kind });
       const command = result.command.join(" ");
+      const planReviewSucceeded = isPlanReviewWork(work) && isRunOk(result);
+      const planReviewCycle = planReviewSucceeded ? autoDevCycleKey(snapshot.autoDevState) : stringValue(sessionState.plan_review_cycle, "");
+      const planReviewThreadId = planReviewSucceeded ? result.threadId ?? null : stringValue(sessionState.plan_review_thread_id, "");
       this.log(
         `[supercodex] cycle=${cycle} finished classification=${result.classification} returncode=${
           result.returnCode
@@ -224,6 +227,9 @@ export class Supervisor {
         lastPromptLog: result.promptPath,
         lastCommand: command,
         consecutiveFailures: isRunOk(result) ? consecutiveFailures : consecutiveFailures + 1,
+        plan_review_completed: planReviewSucceeded || Boolean(sessionState.plan_review_completed) || undefined,
+        plan_review_cycle: planReviewCycle || undefined,
+        plan_review_thread_id: planReviewThreadId || undefined,
         dryRun: this.config.dryRun || undefined,
       };
       await saveSupervisorSession(project, sessionPayload, runId);
@@ -494,7 +500,7 @@ function shouldPrioritizeOperatorIntervention(work: WorkItem): boolean {
   if (work.kind === "done") {
     return true;
   }
-  return work.kind === "stage_gate" && !work.stageId && !work.taskId && (work.source === "plan" || work.source === "objective-audit");
+  return work.kind === "stage_gate" && !work.stageId && !work.taskId && (work.source === "plan" || work.source === "objective-audit" || work.source === "final-acceptance");
 }
 
 function operatorInterventionWork(previousWork: WorkItem): WorkItem {
@@ -564,6 +570,20 @@ function isPlanReviewWork(work: WorkItem): boolean {
 
 function stringValue(value: unknown, fallback: string): string {
   return typeof value === "string" ? value : fallback;
+}
+
+function autoDevCycleKey(autoDevState: Record<string, unknown>): string {
+  const cycle = autoDevState.cycle;
+  if (typeof cycle === "number" && Number.isFinite(cycle)) {
+    return String(cycle);
+  }
+  if (typeof cycle === "string" && cycle.trim()) {
+    return cycle.trim();
+  }
+  const plan = typeof autoDevState.plan === "object" && autoDevState.plan !== null ? (autoDevState.plan as Record<string, unknown>) : {};
+  const currentCycle = stringValue(plan.current_cycle, "");
+  const match = currentCycle.match(/\d+/);
+  return match?.[0] ?? "";
 }
 
 function isAuthFailureClassification(classification: string): classification is "usage_limit" | "unauthorized" {

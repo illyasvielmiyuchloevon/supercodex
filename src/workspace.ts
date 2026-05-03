@@ -222,7 +222,7 @@ export async function loadSnapshot(projectInput: string): Promise<ProjectSnapsho
     missingDocs,
     planTasks,
     supervisorSession,
-    done: autoDevStateDelivered(autoDevState, docsPresent),
+    done: autoDevStateDelivered(autoDevState, docsPresent, supervisorSession),
     phaseLocked: autoDevPhaseLocked(autoDevState),
   };
 }
@@ -230,6 +230,7 @@ export async function loadSnapshot(projectInput: string): Promise<ProjectSnapsho
 export async function loadSnapshotForRun(projectInput: string, runId?: string | null): Promise<ProjectSnapshot> {
   const snapshot = await loadSnapshot(projectInput);
   snapshot.supervisorSession = await loadRecoverableSupervisorSession(snapshot.project, runId);
+  snapshot.done = autoDevStateDelivered(snapshot.autoDevState, snapshot.docsPresent, snapshot.supervisorSession);
   return snapshot;
 }
 
@@ -261,7 +262,7 @@ export function parsePlanTasks(planText: string): PlanTask[] {
 }
 
 export function chooseNextWork(snapshot: ProjectSnapshot): WorkItem {
-  if (snapshot.done) {
+  if (snapshot.done && autoDevStateDelivered(snapshot.autoDevState, snapshot.docsPresent, snapshot.supervisorSession)) {
     return { kind: "done", title: "Project delivered", reason: ".supercodex/AUTO_DEV_STATE.json decision is DELIVERED, final acceptance passed, and Phase 7 delivery is complete.", source: "auto-dev-state" };
   }
   const criticalMissing = snapshot.missingDocs.filter((doc) => doc === autoDevStateFile || doc === "FINAL_GOAL.md" || doc === "PLAN.md");
@@ -281,7 +282,7 @@ export function chooseNextWork(snapshot: ProjectSnapshot): WorkItem {
       source: "docs",
     };
   }
-  const autoWork = chooseFromAutoDevState(snapshot.autoDevState, snapshot.planTasks, snapshot.docsPresent);
+  const autoWork = chooseFromAutoDevState(snapshot.autoDevState, snapshot.planTasks, snapshot.docsPresent, snapshot.supervisorSession);
   if (autoWork) {
     return autoWork;
   }
@@ -313,7 +314,7 @@ export function chooseNextWork(snapshot: ProjectSnapshot): WorkItem {
   };
 }
 
-function chooseFromAutoDevState(autoDevState: JsonObject, planTasks: PlanTask[], docsPresent: Record<string, boolean>): WorkItem | null {
+function chooseFromAutoDevState(autoDevState: JsonObject, planTasks: PlanTask[], docsPresent: Record<string, boolean>, supervisorSession: JsonObject): WorkItem | null {
   if (!Object.keys(autoDevState).length) {
     return null;
   }
@@ -329,8 +330,20 @@ function chooseFromAutoDevState(autoDevState: JsonObject, planTasks: PlanTask[],
   const completed = new Set(stringArray(plan.completed_task_ids));
   const remaining = stringArray(plan.remaining_task_ids).filter((id) => !completed.has(id));
   const nextAction = stringValue(execution.next_action, "");
+  const hasOpenPlanWork = Boolean(currentTaskId) || remaining.length > 0 || planTasks.some((task) => task.status !== "done");
+  const claimsAcceptanceOrDelivery = decision === "DELIVERED" || decision === "PASS_READY_TO_DELIVER" || acceptancePassed(autoDevState);
+  const planReviewComplete = planReviewCompletedForCycle(autoDevState, supervisorSession);
 
-  if (decision === "DELIVERED" && !autoDevStateDelivered(autoDevState, docsPresent)) {
+  if (claimsAcceptanceOrDelivery && !planReviewComplete && !hasOpenPlanWork) {
+    return {
+      kind: "stage_gate",
+      title: "进入 Phase 6 最终目标验收",
+      reason: "PLAN is exhausted, but this cycle has not completed a dedicated Phase 6 plan-review thread.",
+      source: "final-acceptance",
+    };
+  }
+
+  if (decision === "DELIVERED" && !autoDevStateDelivered(autoDevState, docsPresent, supervisorSession) && !hasOpenPlanWork) {
     return {
       kind: "stage_gate",
       title: "补齐最终验收与交付闭环证据",
@@ -339,7 +352,7 @@ function chooseFromAutoDevState(autoDevState: JsonObject, planTasks: PlanTask[],
     };
   }
 
-  if (decision === "PASS_READY_TO_DELIVER" || acceptancePassed(autoDevState)) {
+  if ((decision === "PASS_READY_TO_DELIVER" || acceptancePassed(autoDevState)) && !hasOpenPlanWork) {
     return {
       kind: "stage_gate",
       title: "执行 Phase 7 最终交付与 PR",
@@ -348,7 +361,7 @@ function chooseFromAutoDevState(autoDevState: JsonObject, planTasks: PlanTask[],
     };
   }
 
-  if (decision === "FAIL_CONTINUE_NEXT_CYCLE" || acceptanceFailed(autoDevState)) {
+  if ((decision === "FAIL_CONTINUE_NEXT_CYCLE" || acceptanceFailed(autoDevState)) && !hasOpenPlanWork) {
     return {
       kind: "stage_gate",
       title: "根据最终验收失败创建下一 Cycle",
@@ -762,15 +775,41 @@ function autoDevPhaseLocked(autoDevState: JsonObject): boolean {
   return phase !== "PHASE_0_CLARIFICATION" || stringValue(clarification.status, "") === "CLOSED";
 }
 
-function autoDevStateDelivered(autoDevState: JsonObject, docsPresent: Record<string, boolean>): boolean {
+function autoDevStateDelivered(autoDevState: JsonObject, docsPresent: Record<string, boolean>, supervisorSession: JsonObject): boolean {
   const delivery = objectValue(autoDevState.delivery);
   return (
     stringValue(autoDevState.decision, "") === "DELIVERED" &&
     Boolean(docsPresent["FINAL_ACCEPTANCE_REPORT.md"]) &&
+    planReviewCompletedForCycle(autoDevState, supervisorSession) &&
     acceptancePassed(autoDevState) &&
     Boolean(delivery.readme_updated) &&
     Boolean(delivery.git_committed)
   );
+}
+
+function planReviewCompletedForCycle(autoDevState: JsonObject, supervisorSession: JsonObject): boolean {
+  if (!Boolean(supervisorSession.plan_review_completed)) {
+    return false;
+  }
+  const cycleKey = autoDevCycleKey(autoDevState);
+  if (!cycleKey) {
+    return true;
+  }
+  return stringValue(supervisorSession.plan_review_cycle, "") === cycleKey;
+}
+
+function autoDevCycleKey(autoDevState: JsonObject): string {
+  const cycle = autoDevState.cycle;
+  if (typeof cycle === "number" && Number.isFinite(cycle)) {
+    return String(cycle);
+  }
+  if (typeof cycle === "string" && cycle.trim()) {
+    return cycle.trim();
+  }
+  const plan = objectValue(autoDevState.plan);
+  const currentCycle = stringValue(plan.current_cycle, "");
+  const match = currentCycle.match(/\d+/);
+  return match?.[0] ?? "";
 }
 
 function acceptancePassed(autoDevState: JsonObject): boolean {

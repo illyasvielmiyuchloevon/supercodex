@@ -63,11 +63,13 @@ test("plan completion starts one fresh global acceptance review thread", async (
   };
   const config = { ...defaultSupervisorConfig(project), maxCycles: 1, retryBaseSeconds: 0, retryMaxSeconds: 0 };
   const code = await new Supervisor(config, runner, async () => undefined).run();
-  const saved = JSON.parse(await readFile(join(project, ".supercodex", "runtime", "session.json"), "utf8")) as { thread_scope?: string };
+  const saved = JSON.parse(await readFile(join(project, ".supercodex", "runtime", "session.json"), "utf8")) as { thread_scope?: string; plan_review_completed?: boolean; plan_review_cycle?: string };
 
   assert.equal(code, 0);
   assert.deepEqual(calls, [{ threadId: null, resume: false }]);
   assert.equal(saved.thread_scope, "plan-review");
+  assert.equal(saved.plan_review_completed, true);
+  assert.equal(saved.plan_review_cycle, "1");
 });
 
 test("global acceptance review resumes its review thread until it updates the next cycle", async () => {

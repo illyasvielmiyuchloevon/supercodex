@@ -159,11 +159,11 @@ test("parsePlanTasks and chooseNextWork recover unchecked PLAN tasks", async () 
   assert.equal(work.stageId, "stage-7");
 });
 
-test("chooseNextWork stops only after delivered AUTO_DEV_STATE with passed final acceptance", () => {
+test("chooseNextWork requires a Phase 6 plan-review marker before delivery can stop", () => {
   const base = {
     project: ".",
     missingDocs: [],
-    planTasks: [],
+    planTasks: [{ id: "1.1", title: "Done", status: "done", stageId: "stage-1", source: "plan" as const }],
     supervisorSession: {},
     done: false,
     phaseLocked: true,
@@ -176,13 +176,24 @@ test("chooseNextWork stops only after delivered AUTO_DEV_STATE with passed final
     docsPresent: { "AUTO_DEV_STATE.json": true, "FINAL_GOAL.md": true, "CLARIFICATIONS.md": true, "ASSUMPTIONS.md": true, "PRD.md": true, "ARCHITECTURE.md": true, "PLAN.md": true, "TRACEABILITY_MATRIX.md": true, "CODE_REVIEW_REPORT.md": true, "FINAL_ACCEPTANCE_REPORT.md": true },
   });
   assert.equal(auditRequired.kind, "stage_gate");
-  assert.equal(auditRequired.source, "auto-dev-state");
+  assert.equal(auditRequired.source, "final-acceptance");
+
+  const prematureDelivery = chooseNextWork({
+    ...base,
+    done: true,
+    state: {},
+    autoDevState: { cycle: 1, decision: "DELIVERED", acceptance: { decision: "PASS" }, delivery: { readme_updated: true, git_committed: true } },
+    docsPresent: { "AUTO_DEV_STATE.json": true, "FINAL_GOAL.md": true, "CLARIFICATIONS.md": true, "ASSUMPTIONS.md": true, "PRD.md": true, "ARCHITECTURE.md": true, "PLAN.md": true, "TRACEABILITY_MATRIX.md": true, "CODE_REVIEW_REPORT.md": true, "FINAL_ACCEPTANCE_REPORT.md": true },
+  });
+  assert.equal(prematureDelivery.kind, "stage_gate");
+  assert.equal(prematureDelivery.source, "final-acceptance");
 
   const complete = chooseNextWork({
     ...base,
     done: true,
     state: {},
-    autoDevState: { decision: "DELIVERED", acceptance: { decision: "PASS" }, delivery: { readme_updated: true, git_committed: true } },
+    supervisorSession: { plan_review_completed: true, plan_review_cycle: "1" },
+    autoDevState: { cycle: 1, decision: "DELIVERED", acceptance: { decision: "PASS" }, delivery: { readme_updated: true, git_committed: true } },
     docsPresent: { "AUTO_DEV_STATE.json": true, "FINAL_GOAL.md": true, "CLARIFICATIONS.md": true, "ASSUMPTIONS.md": true, "PRD.md": true, "ARCHITECTURE.md": true, "PLAN.md": true, "TRACEABILITY_MATRIX.md": true, "CODE_REVIEW_REPORT.md": true, "FINAL_ACCEPTANCE_REPORT.md": true },
   });
   assert.equal(complete.kind, "done");
@@ -194,7 +205,7 @@ test("chooseNextWork maps final acceptance pass and fail decisions to Phase 7 or
     state: {},
     missingDocs: [],
     planTasks: [],
-    supervisorSession: {},
+    supervisorSession: { plan_review_completed: true, plan_review_cycle: "1" },
     done: false,
     phaseLocked: true,
     docsPresent: { "AUTO_DEV_STATE.json": true, "FINAL_GOAL.md": true, "CLARIFICATIONS.md": true, "ASSUMPTIONS.md": true, "PRD.md": true, "ARCHITECTURE.md": true, "PLAN.md": true, "TRACEABILITY_MATRIX.md": true, "CODE_REVIEW_REPORT.md": true, "FINAL_ACCEPTANCE_REPORT.md": true },
@@ -237,7 +248,7 @@ test("loadSnapshot marks delivered only after Phase 7 delivery closure", async (
   assert.equal(incomplete.done, false);
   const repairWork = chooseNextWork(incomplete);
   assert.equal(repairWork.kind, "stage_gate");
-  assert.equal(repairWork.source, "auto-dev-state");
+  assert.equal(repairWork.source, "final-acceptance");
 
   await writeFile(
     join(project, ".supercodex", "AUTO_DEV_STATE.json"),
@@ -245,6 +256,17 @@ test("loadSnapshot marks delivered only after Phase 7 delivery closure", async (
       ...state,
       delivery: { readme_updated: true, git_committed: true, pr_created: false },
     }),
+    "utf8",
+  );
+
+  const withoutReview = await loadSnapshot(project);
+  assert.equal(withoutReview.done, false);
+  assert.equal(chooseNextWork(withoutReview).source, "final-acceptance");
+
+  await mkdir(join(project, ".supercodex", "runtime"), { recursive: true });
+  await writeFile(
+    join(project, ".supercodex", "runtime", "session.json"),
+    JSON.stringify({ thread_id: "review-thread", lastClassification: "success", plan_review_completed: true, plan_review_cycle: "1" }),
     "utf8",
   );
 
