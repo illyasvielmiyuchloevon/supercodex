@@ -1,7 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildTuiFrame, renderFrameDiff, transcriptWindow } from "../src/tui-engine.js";
+import { displayCellWidth } from "../src/display-width.js";
 import type { InteractionRecord } from "../src/interactions.js";
+
+const mixedWidthCodexReply =
+  "对齐结果里有一个实际不一致： `.supercodex` 已标记交付并记录 commit/push，但二份严格要求遵守的架构/迁移文档仍写着 S18-T4 open/pending。";
 
 test("tui engine builds named regions with sidebar and command palette", () => {
   const screen = buildTuiFrame({
@@ -94,6 +98,39 @@ test("tui engine scrolls transcript without forcing full-screen redraw", () => {
   const patch = renderFrameDiff(tail, scrolled);
   assert.doesNotMatch(patch, /\x1b\[2J|\x1b\[J/);
   assert.match(scrolled.lines[1] ?? "", /view=scroll-3/);
+});
+
+test("tui engine wraps mixed Chinese and ASCII transcript by terminal cells", () => {
+  const width = 40;
+  const window = transcriptWindow([mixedWidthCodexReply], width, 20, 0);
+
+  assert.equal(window.lines.length > 1, true);
+  assert.equal(window.lines.every((line) => displayCellWidth(line) <= width), true);
+  assert.equal(window.lines.join(""), mixedWidthCodexReply);
+});
+
+test("tui engine frame rows do not exceed terminal cells with Chinese assistant text", () => {
+  const screen = buildTuiFrame({
+    columns: 60,
+    rows: 20,
+    modeLabel: "managed",
+    runId: "default",
+    project: ".",
+    logs: [mixedWidthCodexReply],
+    logScrollOffset: 0,
+    status: {},
+    suggestions: [],
+    commandSelection: 0,
+    interaction: null,
+    interactionSelection: 0,
+    inputPrompt: "> ",
+    inputBuffer: "",
+    inputCursor: 0,
+  });
+
+  assert.equal(screen.frame.lines.every((line) => displayCellWidth(line) === 60), true);
+  assert.equal(screen.frame.lines.some((line) => line.includes("对齐结果里")), true);
+  assert.equal(screen.frame.lines.some((line) => line.includes("commit/push")), true);
 });
 
 test("tui engine renders interaction panel only when command palette is closed", () => {

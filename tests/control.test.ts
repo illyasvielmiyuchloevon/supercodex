@@ -24,6 +24,7 @@ import { readSupervisorSettings } from "../src/settings.js";
 import { shouldShowSlashPalette, slashCommandSuggestions } from "../src/tui-commands.js";
 import { saveSupervisorRuntime } from "../src/workspace.js";
 import type { CodexAuthManager } from "../src/auth.js";
+import { displayCellWidth } from "../src/display-width.js";
 
 test("control queue stores and handles run-scoped steering requests", async () => {
   const project = await mkdtemp(join(tmpdir(), "supercodex-control-"));
@@ -410,4 +411,18 @@ test("terminal frame keeps ANSI resets when clipping full-width styled rows", ()
 
   assert.match(frame.lines[0] ?? "", /\x1b\[0m$/);
   assert.match(output, /\x1b\[0m\nplain/);
+});
+
+test("terminal frame clips mixed Chinese and ASCII by display cells", () => {
+  const line = "对齐结果里有一个实际不一致： `.supercodex` 已标记交付并记录 commit/push";
+  const frame = createTerminalFrame({
+    lines: [line],
+    columns: 40,
+    rows: 1,
+    cursorRow: 1,
+    cursorColumn: 1,
+  });
+
+  assert.equal(displayCellWidth(frame.lines[0] ?? ""), 40);
+  assert.equal(frame.lines[0]?.includes("对齐结果里"), true);
 });

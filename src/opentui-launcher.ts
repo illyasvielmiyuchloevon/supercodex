@@ -13,7 +13,7 @@ export async function runOpenTuiFrontend(options: AttachOptions): Promise<number
     stdio: "inherit",
     shell: false,
     cwd: packageRoot,
-    env: {
+    env: openTuiLaunchEnv({
       ...process.env,
       SUPERCODEX_PROJECT: resolve(options.project),
       SUPERCODEX_RUN_ID: options.runId ?? "default",
@@ -25,7 +25,7 @@ export async function runOpenTuiFrontend(options: AttachOptions): Promise<number
         streamConsole: false,
       }),
       SUPERCODEX_POLL_MS: String(options.pollMs ?? 500),
-    },
+    }),
   });
 
   return await new Promise((resolvePromise) => {
@@ -42,6 +42,16 @@ export async function runOpenTuiFrontend(options: AttachOptions): Promise<number
       resolvePromise(code ?? 0);
     });
   });
+}
+
+export function openTuiLaunchEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  if (isTruthy(env.OPENTUI_FORCE_UNICODE) || env.OPENTUI_FORCE_WCWIDTH !== undefined) {
+    return env;
+  }
+  return {
+    ...env,
+    OPENTUI_FORCE_WCWIDTH: "true",
+  };
 }
 
 function resolveOpenTuiEntry(): string {
@@ -71,4 +81,11 @@ function resolveOpenTuiPreload(): string {
 function resolvePackageRoot(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   return resolve(here, "..", "..");
+}
+
+function isTruthy(value: string | undefined): boolean {
+  if (value === undefined) {
+    return false;
+  }
+  return /^(1|true|yes|on)$/i.test(value.trim());
 }

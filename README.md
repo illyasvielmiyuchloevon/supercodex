@@ -10,7 +10,7 @@ The current 0.13 version is app-server only. The old one-shot runner and hand-dr
 
 - Starts and controls `codex app-server` with `initialize`, `thread/start` or `thread/resume`, then `turn/start`.
 - Persists project state, run state, session data, runtime data, logs, interactions, and checkpoints under `.supercodex/`.
-- Uses an OpenTUI/Solid full-screen TUI with a transcript, status/sidebar metadata, slash commands, picker overlays, toasts, and a textarea composer.
+- Uses an OpenTUI/Solid full-screen TUI with a mixed-width Unicode-safe transcript, status/sidebar metadata, slash commands, picker overlays, toasts, and a textarea composer.
 - Reconstructs the visible transcript from SuperCodex app-server logs and matching native Codex session JSONL files.
 - Keeps the main transcript compact: command output, file reads, and large tool output are summarized in the UI while raw logs stay on disk.
 - Handles Codex app-server approval, permission, user-input, and MCP elicitation requests inside the TUI.

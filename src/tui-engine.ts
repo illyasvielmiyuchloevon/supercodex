@@ -1,6 +1,14 @@
 import type { InteractionRecord } from "./interactions.js";
 import type { SlashCommandSuggestion } from "./tui-commands.js";
 import type { JsonObject } from "./types.js";
+import {
+  displayCellWidth,
+  padRightCells,
+  shortenByCellWidth,
+  sliceTextByCellWidth,
+  sliceTextEndByCellWidth,
+  wrapLinesByCellWidth,
+} from "./display-width.js";
 
 export interface TerminalFrame {
   columns: number;
@@ -144,12 +152,15 @@ export function transcriptWindow(lines: string[], width: number, height: number,
 export function inputViewport(prompt: string, inputText: string, cursor: number, columns: number): { line: string; cursorColumn: number } {
   const boundedCursor = Math.max(0, Math.min(cursor, inputText.length));
   const visibleText = inputText.replace(/\n/g, "\\n");
-  const visibleCursor = inputText.slice(0, boundedCursor).replace(/\n/g, "\\n").length;
-  const available = Math.max(1, columns - prompt.length - 1);
-  const start = Math.max(0, visibleCursor - available);
-  const visible = visibleText.slice(start, start + available);
-  const cursorColumn = Math.max(1, Math.min(columns, prompt.length + (visibleCursor - start) + 1));
-  return { line: `${prompt}${visible}`.slice(0, columns), cursorColumn };
+  const beforeCursor = inputText.slice(0, boundedCursor).replace(/\n/g, "\\n");
+  const afterCursor = visibleText.slice(beforeCursor.length);
+  const promptWidth = displayCellWidth(prompt);
+  const available = Math.max(1, Math.floor(columns) - promptWidth - 1);
+  const before = sliceTextEndByCellWidth(beforeCursor, available);
+  const after = sliceTextByCellWidth(afterCursor, available - displayCellWidth(before));
+  const visible = `${before}${after}`;
+  const cursorColumn = Math.max(1, Math.min(columns, promptWidth + displayCellWidth(before) + 1));
+  return { line: sliceTextByCellWidth(`${prompt}${visible}`, columns), cursorColumn };
 }
 
 export function createTerminalFrame(input: {
@@ -263,38 +274,15 @@ function horizontal(width: number): string {
 }
 
 function padRight(value: string, width: number): string {
-  const safeWidth = Math.max(0, width);
-  const visibleLength = ansiVisibleLength(value);
-  if (visibleLength >= safeWidth) {
-    return truncateAnsiVisible(value, safeWidth);
-  }
-  return value + " ".repeat(safeWidth - visibleLength);
+  return padRightCells(value, width);
 }
 
 function wrapLines(lines: string[], width: number): string[] {
-  const safeWidth = Math.max(1, width);
-  const result: string[] = [];
-  for (const line of lines) {
-    const clean = stripAnsi(line).replace(/\t/g, "  ");
-    if (!clean) {
-      result.push("");
-      continue;
-    }
-    for (let index = 0; index < clean.length; index += safeWidth) {
-      result.push(clean.slice(index, index + safeWidth));
-    }
-  }
-  return result;
+  return wrapLinesByCellWidth(lines, width);
 }
 
 function shorten(value: string, width: number): string {
-  if (value.length <= width) {
-    return value;
-  }
-  if (width <= 3) {
-    return value.slice(0, width);
-  }
-  return `${value.slice(0, Math.max(0, width - 3))}...`;
+  return shortenByCellWidth(value, width);
 }
 
 function invert(value: string): string {
@@ -304,41 +292,6 @@ function invert(value: string): string {
 function color(value: string, name: "cyan" | "yellow"): string {
   const code = name === "cyan" ? 36 : 33;
   return `\x1b[${code}m${value}\x1b[39m`;
-}
-
-function stripAnsi(value: string): string {
-  return value.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "");
-}
-
-function ansiVisibleLength(value: string): number {
-  return stripAnsi(value).length;
-}
-
-function truncateAnsiVisible(value: string, width: number): string {
-  if (width <= 0) {
-    return value.includes("\x1b[") ? "\x1b[0m" : "";
-  }
-  let visible = 0;
-  let outputText = "";
-  let sawAnsi = false;
-  for (let index = 0; index < value.length; ) {
-    if (value[index] === "\x1b" && value[index + 1] === "[") {
-      const match = value.slice(index).match(/^\x1b\[[0-9;?]*[ -/]*[@-~]/);
-      if (match) {
-        sawAnsi = true;
-        outputText += match[0];
-        index += match[0].length;
-        continue;
-      }
-    }
-    if (visible >= width) {
-      break;
-    }
-    outputText += value[index] ?? "";
-    visible++;
-    index++;
-  }
-  return sawAnsi ? `${outputText}\x1b[0m` : outputText;
 }
 
 function clampSelection(index: number, length: number): number {
