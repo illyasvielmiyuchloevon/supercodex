@@ -34,10 +34,9 @@ test("ensureScaffold includes lightweight AGENTS.md required files", async () =>
   assert.match(plan, /#### Stage 1:/);
   assert.match(plan, /#### Milestone Gate/);
   assert.match(plan, /Necessary checks passed/);
-  const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as { schema_version?: string; goal_mode?: boolean; entry_mode?: string; phase?: string; clarification?: { status?: string } };
+  const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as { schema_version?: string; goal_mode?: boolean; phase?: string; clarification?: { status?: string } };
   assert.equal(state.schema_version, "1.0");
   assert.equal(state.goal_mode, true);
-  assert.equal(state.entry_mode, "GOAL");
   assert.equal(state.phase, "PHASE_1_PRD");
   assert.equal(state.clarification?.status, "CLOSED");
   for (const legacyDoc of ["progress.md", "checkpoints.md", "recovery.md", "last-error.md", "last-action.md"]) {
@@ -56,9 +55,8 @@ test("/goal reset removes stale SuperCodex state and writes the new FINAL_GOAL",
 
   await assert.rejects(readFile(join(project, ".supercodex", "stale.txt"), "utf8"));
   assert.match(await readFile(join(project, ".supercodex", "FINAL_GOAL.md"), "utf8"), /build the full product/);
-  const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as { goal_mode?: boolean; entry_mode?: string; phase?: string };
+  const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as { goal_mode?: boolean; phase?: string };
   assert.equal(state.goal_mode, true);
-  assert.equal(state.entry_mode, "GOAL");
   assert.equal(state.phase, "PHASE_1_PRD");
 });
 
@@ -67,13 +65,11 @@ test("ensureScaffold without an explicit goal does not activate goal mode", asyn
 
   await ensureScaffold(project);
 
-  const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as { goal_mode?: boolean; entry_mode?: string; phase?: string };
+  const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as { goal_mode?: boolean; phase?: string };
   assert.equal(state.goal_mode, false);
-  assert.equal(state.entry_mode, "UNSET");
   assert.equal(state.phase, "PHASE_0_CLARIFICATION");
   const snapshot = await loadSnapshot(project);
   assert.equal(snapshot.autoDevState.goal_mode, false);
-  assert.equal(snapshot.autoDevState.entry_mode, "UNSET");
 });
 
 test("loadSnapshot does not infer goal mode from FINAL_GOAL without an explicit marker", async () => {
@@ -89,7 +85,6 @@ test("loadSnapshot does not infer goal mode from FINAL_GOAL without an explicit 
   const snapshot = await loadSnapshot(project);
 
   assert.equal(snapshot.autoDevState.goal_mode, false);
-  assert.equal(snapshot.autoDevState.entry_mode, "UNSET");
 });
 
 test("ensureScaffold creates project AGENTS.md once and preserves existing project guidance", async () => {
@@ -145,20 +140,13 @@ test("ensureScaffold ignores legacy .supercodex/docs state and starts new AUTO_D
   assert.notEqual(await readFile(join(project, ".supercodex", "PLAN.md"), "utf8"), "# Legacy PLAN\n\n## Stage 5: Resume\n\n- [x] Task 5.1: Done\n- [ ] Task 5.2: Continue\n");
   const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as {
     phase?: string;
-    plan?: { current_stage?: string | null; current_task_id?: string | null; completed_task_ids?: string[]; remaining_task_ids?: string[] };
-    execution?: { next_action?: string };
   };
   assert.equal(state.phase, "PHASE_1_PRD");
-  assert.equal(state.plan?.current_stage, null);
-  assert.equal(state.plan?.current_task_id, null);
-  assert.deepEqual(state.plan?.completed_task_ids, []);
-  assert.deepEqual(state.plan?.remaining_task_ids, []);
-  assert.equal(state.execution?.next_action, "START_PHASE_1_PRD");
 
   const snapshot = await loadSnapshot(project);
   const work = chooseNextWork(snapshot);
   assert.equal(work.kind, "stage_gate");
-  assert.equal(work.title, "执行 PHASE_1_PRD: start phase 1 prd");
+  assert.equal(work.title, "Phase 1 编写或更新 PRD");
   assert.equal(work.source, "auto-dev-state");
 });
 
@@ -171,17 +159,11 @@ test("ensureScaffold derives AUTO_DEV_STATE from existing lightweight PLAN only"
 
   const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as {
     phase?: string;
-    plan?: { current_task_id?: string | null; completed_task_ids?: string[]; remaining_task_ids?: string[] };
-    execution?: { next_action?: string };
   };
   assert.equal(state.phase, "PHASE_6_FINAL_ACCEPTANCE");
-  assert.equal(state.plan?.current_task_id, null);
-  assert.deepEqual(state.plan?.completed_task_ids, ["1.1"]);
-  assert.deepEqual(state.plan?.remaining_task_ids, []);
-  assert.equal(state.execution?.next_action, "RUN_FINAL_ACCEPTANCE");
 });
 
-test("parsePlanTasks and chooseNextWork recover unchecked PLAN tasks", async () => {
+test("parsePlanTasks and chooseNextWork continue PLAN without task-level dispatch", async () => {
   const tasks = parsePlanTasks("## Stage 7: Example\n\n- [x] Task 7.1: Done\n- [ ] Task 7.2: Next\n");
   assert.equal(tasks.length, 2);
   const milestoneTasks = parsePlanTasks("## Cycle 1\n\n### Milestone 1: Slice\n\n#### Stage 2: Work\n- [ ] Task 2.1: Next\n");
@@ -203,9 +185,60 @@ test("parsePlanTasks and chooseNextWork recover unchecked PLAN tasks", async () 
     done: false,
     phaseLocked: true,
   });
-  assert.equal(work.kind, "task");
-  assert.equal(work.taskId, "7.2");
-  assert.equal(work.stageId, "stage-7");
+  assert.equal(work.kind, "stage_gate");
+  assert.equal(work.title, "继续 Phase 4 自动开发执行");
+  assert.equal(work.stageId, undefined);
+  assert.equal(work.taskId, undefined);
+});
+
+test("chooseNextWork ignores legacy AUTO_DEV_STATE task ids and lets Codex read PLAN", () => {
+  const docsPresent = { "AUTO_DEV_STATE.json": true, "FINAL_GOAL.md": true, "PRD.md": true, "ARCHITECTURE.md": true, "PLAN.md": true };
+  const planTasks = [
+    { id: "1.1", title: "Done in PLAN", status: "done", stageId: "stage-1", source: "plan" as const },
+    { id: "1.2", title: "Next from PLAN", status: "todo", stageId: "stage-1", source: "plan" as const },
+  ];
+
+  const next = chooseNextWork({
+    project: ".",
+    state: {},
+    autoDevState: {
+      phase: "PHASE_4_DEVELOPMENT",
+      plan: { current_stage: "stage-1", current_task_id: "1.1", completed_task_ids: [], remaining_task_ids: ["1.1", "1.2"] },
+      execution: { next_action: "EXECUTE_NEXT_PLAN_TASK" },
+    },
+    docsPresent,
+    missingDocs: [],
+    planTasks,
+    supervisorSession: {},
+    done: false,
+    phaseLocked: true,
+  });
+
+  assert.equal(next.kind, "stage_gate");
+  assert.equal(next.title, "继续 Phase 4 自动开发执行");
+  assert.equal(next.taskId, undefined);
+  assert.equal(next.stageId, undefined);
+});
+
+test("chooseNextWork enters Phase 6 when PLAN is exhausted even if AUTO_DEV_STATE still points at execution", () => {
+  const done = chooseNextWork({
+    project: ".",
+    state: {},
+    autoDevState: {
+      phase: "PHASE_4_DEVELOPMENT",
+      plan: { current_stage: "stage-1", current_task_id: "1.1", completed_task_ids: [], remaining_task_ids: ["1.1"] },
+      execution: { next_action: "EXECUTE_NEXT_PLAN_TASK" },
+    },
+    docsPresent: { "AUTO_DEV_STATE.json": true, "FINAL_GOAL.md": true, "PRD.md": true, "ARCHITECTURE.md": true, "PLAN.md": true },
+    missingDocs: [],
+    planTasks: [{ id: "1.1", title: "Done in PLAN", status: "done", stageId: "stage-1", source: "plan" as const }],
+    supervisorSession: {},
+    done: false,
+    phaseLocked: true,
+  });
+
+  assert.equal(done.kind, "stage_gate");
+  assert.equal(done.source, "final-acceptance");
 });
 
 test("chooseNextWork requires a Phase 6 plan-review marker before delivery can stop", () => {
@@ -296,9 +329,8 @@ test("loadSnapshot marks delivered only after Phase 7 delivery closure", async (
     phase: "PHASE_7_DELIVERY_PR",
     decision: "DELIVERED",
     clarification: { status: "CLOSED" },
-    plan: { completed_task_ids: ["1.1"], remaining_task_ids: [] },
     acceptance: { decision: "PASS" },
-    delivery: { git_committed: false, pr_created: false },
+    delivery: { git_committed: false },
   };
   await writeFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), JSON.stringify(state), "utf8");
 
@@ -312,7 +344,7 @@ test("loadSnapshot marks delivered only after Phase 7 delivery closure", async (
     join(project, ".supercodex", "AUTO_DEV_STATE.json"),
     JSON.stringify({
       ...state,
-      delivery: { git_committed: true, pr_created: false },
+      delivery: { git_committed: true },
     }),
     "utf8",
   );

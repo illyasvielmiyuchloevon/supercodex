@@ -40,18 +40,13 @@ const supercodexGitignoreRules = [".supercodex/"] as const;
 function autoDevStateTemplate(goal: string, timestamp: string, planTasks: PlanTask[] = [], options: { goalMode?: boolean } = {}): JsonObject {
   const hasGoal = Boolean(goal.trim());
   const goalMode = options.goalMode ?? hasGoal;
-  const completedTaskIds = planTasks.filter((task) => task.status === "done").map((task) => task.id);
-  const remainingTasks = planTasks.filter((task) => task.status !== "done");
-  const firstRemainingTask = remainingTasks[0] ?? null;
   const hasPlanProgress = planTasks.length > 0;
-  const allPlanTasksDone = hasPlanProgress && remainingTasks.length === 0;
-  const phase = firstRemainingTask ? "PHASE_4_DEVELOPMENT" : allPlanTasksDone ? "PHASE_6_FINAL_ACCEPTANCE" : hasGoal ? "PHASE_1_PRD" : "PHASE_0_CLARIFICATION";
-  const nextAction = firstRemainingTask ? "EXECUTE_NEXT_PLAN_TASK" : allPlanTasksDone ? "RUN_FINAL_ACCEPTANCE" : hasGoal ? "START_PHASE_1_PRD" : "START_PHASE_0";
+  const allPlanTasksDone = hasPlanProgress && planTasks.every((task) => task.status === "done");
+  const phase = hasPlanProgress && !allPlanTasksDone ? "PHASE_4_DEVELOPMENT" : allPlanTasksDone ? "PHASE_6_FINAL_ACCEPTANCE" : hasGoal ? "PHASE_1_PRD" : "PHASE_0_CLARIFICATION";
   const clarificationClosed = hasGoal || hasPlanProgress;
   return {
     schema_version: "1.0",
     goal_mode: goalMode,
-    entry_mode: goalMode ? "GOAL" : "UNSET",
     cycle: 1,
     phase,
     decision: "IN_PROGRESS",
@@ -59,29 +54,12 @@ function autoDevStateTemplate(goal: string, timestamp: string, planTasks: PlanTa
     clarification: {
       status: clarificationClosed ? "CLOSED" : "OPEN",
       asked_count: 0,
-      max_questions: 10,
-    },
-    plan: {
-      current_cycle: "Cycle 1",
-      current_stage: firstRemainingTask?.stageId ?? null,
-      current_task_id: firstRemainingTask?.id ?? null,
-      completed_task_ids: completedTaskIds,
-      remaining_task_ids: remainingTasks.map((task) => task.id),
-    },
-    execution: {
-      next_action: nextAction,
-    },
-    quality: {
-      tests_status: "NOT_RUN",
-      code_review_status: "NOT_RUN",
     },
     acceptance: {
-      status: "NOT_RUN",
       decision: "PENDING",
     },
     delivery: {
       git_committed: false,
-      pr_created: false,
     },
   };
 }
@@ -263,17 +241,9 @@ export function chooseNextWork(snapshot: ProjectSnapshot): WorkItem {
   if (autoWork) {
     return autoWork;
   }
-  for (const task of snapshot.planTasks) {
-    if (task.status !== "done") {
-      return {
-        kind: "task",
-        title: task.title,
-        stageId: task.stageId,
-        taskId: task.id,
-        reason: "First unchecked task in .supercodex/PLAN.md",
-        source: "plan",
-      };
-    }
+  const hasOpenPlanWork = snapshot.planTasks.some((task) => task.status !== "done");
+  if (hasOpenPlanWork) {
+    return continuePlanWork("Unfinished checklist items exist in .supercodex/PLAN.md.", "plan");
   }
   if (snapshot.planTasks.length > 0) {
     return {
@@ -299,15 +269,8 @@ function chooseFromAutoDevState(autoDevState: JsonObject, planTasks: PlanTask[],
   const phase = stringValue(autoDevState.phase, "PHASE_0_CLARIFICATION");
   const decision = stringValue(autoDevState.decision, "IN_PROGRESS");
   const clarification = objectValue(autoDevState.clarification);
-  const plan = objectValue(autoDevState.plan);
-  const execution = objectValue(autoDevState.execution);
   const acceptance = objectValue(autoDevState.acceptance);
-  const currentTaskId = stringOrNull(plan.current_task_id);
-  const currentStage = normalizeOptionalStageId(plan.current_stage);
-  const completed = new Set(stringArray(plan.completed_task_ids));
-  const remaining = stringArray(plan.remaining_task_ids).filter((id) => !completed.has(id));
-  const nextAction = stringValue(execution.next_action, "");
-  const hasOpenPlanWork = Boolean(currentTaskId) || remaining.length > 0 || planTasks.some((task) => task.status !== "done");
+  const hasOpenPlanWork = planTasks.some((task) => task.status !== "done");
   const claimsFinalAcceptanceDecision =
     (decision === "DELIVERED" ||
       decision === "PASS_READY_TO_DELIVER" ||
@@ -361,47 +324,31 @@ function chooseFromAutoDevState(autoDevState: JsonObject, planTasks: PlanTask[],
     };
   }
 
-  if (currentTaskId) {
+  if (phase === "PHASE_4_DEVELOPMENT") {
+    if (hasOpenPlanWork || planTasks.length === 0) {
+      return continuePlanWork("AUTO_DEV_STATE phase is PHASE_4_DEVELOPMENT; Codex should read PLAN.md and continue the plan.", "auto-dev-state");
+    }
     return {
-      kind: "task",
-      title: `执行 Plan task ${currentTaskId}`,
-      stageId: currentStage ?? inferStageFromTaskId(currentTaskId),
-      taskId: currentTaskId,
-      reason: "AUTO_DEV_STATE.json plan.current_task_id",
-      source: "auto-dev-state",
+      kind: "stage_gate",
+      title: "进入 Phase 6 最终目标验收",
+      reason: "PLAN checklist is exhausted; AGENTS.md requires Phase 6 final acceptance before delivery.",
+      source: "final-acceptance",
     };
   }
 
-  if (remaining.length > 0) {
-    const taskId = remaining[0]!;
-    return {
-      kind: "task",
-      title: `执行 Plan task ${taskId}`,
-      stageId: currentStage ?? inferStageFromTaskId(taskId),
-      taskId,
-      reason: "AUTO_DEV_STATE.json plan.remaining_task_ids",
-      source: "auto-dev-state",
-    };
-  }
-
-  if (phase === "PHASE_4_DEVELOPMENT" && planTasks.some((task) => task.status !== "done")) {
-    return null;
-  }
-
-  if (nextAction) {
-    return {
-      kind: phase === "PHASE_4_DEVELOPMENT" ? "task" : "stage_gate",
-      title: nextActionTitle(nextAction, phase),
-      stageId: currentStage,
-      reason: `AUTO_DEV_STATE.json execution.next_action=${nextAction}`,
-      source: "auto-dev-state",
-    };
-  }
-
-  return phaseWork(phase, currentStage);
+  return phaseWork(phase);
 }
 
-function phaseWork(phase: string, stageId: string | null): WorkItem | null {
+function continuePlanWork(reason: string, source: string): WorkItem {
+  return {
+    kind: "stage_gate",
+    title: "继续 Phase 4 自动开发执行",
+    reason,
+    source,
+  };
+}
+
+function phaseWork(phase: string): WorkItem | null {
   switch (phase) {
     case "PHASE_0_CLARIFICATION":
       return {
@@ -435,7 +382,6 @@ function phaseWork(phase: string, stageId: string | null): WorkItem | null {
       return {
         kind: "stage_gate",
         title: "Phase 5 测试、审查与修复",
-        stageId,
         reason: "AUTO_DEV_STATE phase is PHASE_5_TEST_REVIEW_REPAIR.",
         source: "auto-dev-state",
       };
@@ -620,7 +566,7 @@ ${goal || "Not provided yet."}
       return `# ${doc.slice(0, -3)}
 
 This file was created by SuperCodex as a missing required file.
-It should be filled by the active Codex work cycle without recreating the old heavy docs tree.
+It should be filled by the active Codex work cycle using the lightweight SuperCodex docs.
 
 Request/Goal: ${goal || "Not provided yet."}
 `;
@@ -644,7 +590,7 @@ Goal: ${goal || "Not provided yet."}
 
 #### Milestone Gate
 - [ ] Necessary checks passed
-- [ ] PLAN / AUTO_DEV_STATE updated
+- [ ] PLAN progress updated
 
 ### Milestone 2: Next Capability Closure
 
@@ -678,9 +624,9 @@ function projectAgentsTemplateCandidates(): string[] {
 function fallbackProjectAgentsTemplate(): string {
   return `# AGENTS.md - SuperCodex Project Instructions
 
-This project is managed by SuperCodex using the lightweight AGENTS.md protocol. Before doing work, Codex must read \`.supercodex/AUTO_DEV_STATE.json\`, \`.supercodex/FINAL_GOAL.md\`, \`.supercodex/PRD.md\`, \`.supercodex/ARCHITECTURE.md\`, \`.supercodex/PLAN.md\`, and git status, then continue from the recorded phase/task instead of restarting from scratch.
+This project is managed by SuperCodex using the lightweight AGENTS.md protocol. Before doing work, Codex must read \`.supercodex/AUTO_DEV_STATE.json\`, \`.supercodex/FINAL_GOAL.md\`, \`.supercodex/PRD.md\`, \`.supercodex/ARCHITECTURE.md\`, \`.supercodex/PLAN.md\`, and git status, then continue from the recorded Phase and the plan itself.
 
-Use available sub-agent, worker, explorer, tester, or reviewer capabilities when they materially help: independent exploration, disjoint implementation ownership, repeated failure analysis, parallel testing, code review, security review, or final-goal coverage review. Do not use them for tiny tasks or overlapping write scopes. The main agent remains responsible for integration, verification, and required doc updates.
+Use available sub-agent, worker, explorer, tester, or reviewer capabilities when they materially help: independent exploration, disjoint implementation ownership, repeated failure analysis, parallel testing, code review, security review, or final-goal coverage review. The main agent remains responsible for integration, verification, and required doc updates.
 
 Required durable files:
 
@@ -690,35 +636,31 @@ Required durable files:
 - \`.supercodex/ARCHITECTURE.md\`
 - \`.supercodex/PLAN.md\`
 
-\`.supercodex/AUTO_DEV_STATE.json\` is the machine-readable scheduling source. \`.supercodex/FINAL_GOAL.md\` stores the original user input, final clarified goal, clarification answers, and assumptions. Markdown files are limited to FINAL_GOAL, PRD, ARCHITECTURE, and PLAN. SuperCodex may record runtime logs automatically; Codex must not hand-maintain extra Markdown reports or runtime log files. Do not recreate old heavy docs trees unless the user explicitly asks for them.
+\`.supercodex/AUTO_DEV_STATE.json\` is the machine-readable scheduling source. \`.supercodex/FINAL_GOAL.md\` stores the original user input, final clarified goal, clarification answers, and assumptions. Markdown files are FINAL_GOAL, PRD, ARCHITECTURE, and PLAN. SuperCodex may record runtime logs automatically.
 
-Only Phase 0 may ask the user blocking clarification questions. After Phase 0, fix errors autonomously, keep AUTO_DEV_STATE valid JSON through atomic writes, and do not claim delivery until AUTO_DEV_STATE.acceptance says PASS and Phase 7 delivery is complete.
+Phase 0 handles blocking clarification questions. After Phase 0, fix errors autonomously, keep AUTO_DEV_STATE valid JSON through atomic writes, and deliver after AUTO_DEV_STATE.acceptance.decision says PASS and Phase 7 delivery is complete.
 
-\`.supercodex/PLAN.md\` should group Stage tasks inside Cycle and Milestone sections. Stage remains the execution unit; Milestone is the intermediate commit/push boundary. Do not create a fresh Codex thread for Stage changes, Milestone commits, or pushes. When the PLAN is exhausted, SuperCodex must run the full-project Phase 6 final acceptance before Phase 7.
+\`.supercodex/PLAN.md\` is Codex's execution plan and progress record. AUTO_DEV_STATE remains the Phase-level scheduling state. When the PLAN is exhausted, SuperCodex must run the full-project Phase 6 final acceptance before Phase 7.
 `;
 }
 
 function normalizeAutoDevState(autoDevState: JsonObject): JsonObject {
   const phase = stringValue(autoDevState.phase, "PHASE_0_CLARIFICATION");
-  const plan = objectValue(autoDevState.plan);
   return {
     ...autoDevState,
     mode: modeFromPhase(phase),
     phase,
-    currentStageId: normalizeOptionalStageId(plan.current_stage),
-    currentTaskId: stringOrNull(plan.current_task_id),
+    currentStageId: null,
+    currentTaskId: null,
     phaseLocked: autoDevPhaseLocked(autoDevState),
     done: false,
   };
 }
 
 function withExplicitGoalModeDefaults(autoDevState: JsonObject): JsonObject {
-  const entryMode = typeof autoDevState.entry_mode === "string" ? autoDevState.entry_mode.trim().toUpperCase() : "";
-  const goalMode = autoDevState.goal_mode === true || entryMode === "GOAL";
   return {
     ...autoDevState,
-    goal_mode: goalMode,
-    entry_mode: goalMode ? "GOAL" : entryMode || "UNSET",
+    goal_mode: autoDevState.goal_mode === true,
   };
 }
 
@@ -765,17 +707,12 @@ function autoDevCycleKey(autoDevState: JsonObject): string {
 
 function acceptancePassed(autoDevState: JsonObject): boolean {
   const acceptance = objectValue(autoDevState.acceptance);
-  return new Set(["PASS", "PASSED"]).has(stringValue(acceptance.decision, "")) || new Set(["PASS", "PASSED"]).has(stringValue(acceptance.status, ""));
+  return new Set(["PASS", "PASSED"]).has(stringValue(acceptance.decision, ""));
 }
 
 function acceptanceFailed(autoDevState: JsonObject): boolean {
   const acceptance = objectValue(autoDevState.acceptance);
-  return new Set(["FAIL", "FAILED"]).has(stringValue(acceptance.decision, "")) || new Set(["FAIL", "FAILED"]).has(stringValue(acceptance.status, ""));
-}
-
-function nextActionTitle(nextAction: string, phase: string): string {
-  const cleaned = nextAction.replaceAll("_", " ").toLowerCase();
-  return `执行 ${phase}: ${cleaned}`;
+  return new Set(["FAIL", "FAILED"]).has(stringValue(acceptance.decision, ""));
 }
 
 function modeFromPhase(phase: string): string {
@@ -803,14 +740,6 @@ function objectValue(value: unknown): JsonObject {
 
 function stringValue(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
-}
-
-function stringOrNull(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function stringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).map((item) => item.trim()) : [];
 }
 
 function isObject(value: unknown): value is JsonObject {
