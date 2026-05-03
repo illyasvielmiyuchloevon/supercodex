@@ -3,7 +3,7 @@ import type { AgentToastRecord } from "../src/opentui/toast";
 import { autocompleteOverlayLayout, formatSuggestionRow } from "../src/opentui/autocomplete";
 import { messagePartDisplayLines } from "../src/opentui/message-list";
 import { wrapTranscriptLineForDisplay } from "../src/opentui/session-view";
-import { pushToast, removeToastById, smokeChooseSlashCommandWithEnter, smokeChooseSlashPrefixCommandWithEnter, smokeOperateCodexInteractionPickerWithKeyboard, smokeOperateStopPickerWithKeyboard, smokeRenderOpenTui, smokeRenderOpenTuiCustomTheme, smokeRenderOpenTuiDialogHost, smokeRenderOpenTuiLongTranscript, smokeRenderOpenTuiModelPicker, smokeRenderOpenTuiPanels, smokeRenderOpenTuiPermissionsPicker, smokeRenderOpenTuiPrefersCanonicalTranscriptLines, smokeRenderOpenTuiResponsiveMetadata, smokeRenderOpenTuiResumePicker, smokeRenderOpenTuiRunningControls, smokeRenderOpenTuiSecondaryCommandPicker, smokeRenderOpenTuiStructuredMessages, smokeRenderOpenTuiToastsAndErrorBoundary, smokeRenderOpenTuiTranscriptUpdateBurst, smokeRenderOpenTuiViewportMatrix, smokeRouteOpenTuiStartCommand, smokeSubmitOpenTuiPromptMultiline, stableSidebarWidth } from "../src/opentui-app";
+import { pushToast, removeToastById, smokeChooseSlashCommandWithEnter, smokeChooseSlashPrefixCommandWithEnter, smokeOperateCodexInteractionPickerWithKeyboard, smokeOperateStopPickerWithKeyboard, smokeRenderOpenTui, smokeRenderOpenTuiCustomTheme, smokeRenderOpenTuiDialogHost, smokeRenderOpenTuiLongTranscript, smokeRenderOpenTuiMixedWidthAssistantText, smokeRenderOpenTuiModelPicker, smokeRenderOpenTuiPanels, smokeRenderOpenTuiPermissionsPicker, smokeRenderOpenTuiPrefersCanonicalTranscriptLines, smokeRenderOpenTuiResponsiveMetadata, smokeRenderOpenTuiResumePicker, smokeRenderOpenTuiRunningControls, smokeRenderOpenTuiSecondaryCommandPicker, smokeRenderOpenTuiStructuredMessages, smokeRenderOpenTuiToastsAndErrorBoundary, smokeRenderOpenTuiTranscriptUpdateBurst, smokeRenderOpenTuiViewportMatrix, smokeRouteOpenTuiStartCommand, smokeSubmitOpenTuiPromptMultiline, stableSidebarWidth } from "../src/opentui-app";
 import { displayCellWidth } from "../src/display-width";
 import { SUPERCODEX_VERSION } from "../src/version";
 
@@ -144,6 +144,27 @@ describe("OpenTUI frontend", () => {
     expect(transcriptLines.join("")).toBe(`[operator] ${text}`);
   });
 
+  test("keeps ASCII evidence tokens intact in mixed Chinese assistant text", async () => {
+    const text = "对齐结果里有一个实际不一致：`.supercodex` 已标记交付并记录 commit/push，但三份要求严格遵守的架构/迁移文档仍写着 S18-T4 “open/pending”。这不是重新规划问题，是交付证据回写漏项；我会把这些文档和轻量假设同步到当前已交付状态，然后跑边界/文档卫生验证。";
+    const lines = messagePartDisplayLines({ type: "text", text }, 68);
+
+    expect(lines.every((line) => displayCellWidth(line) <= 68)).toBe(true);
+    expect(lines.join("")).toBe(text);
+    expect(lines.some((line) => line.includes("`.supercodex`"))).toBe(true);
+    expect(lines.some((line) => line.includes("commit/push"))).toBe(true);
+    expect(lines.some((line) => line.includes("S18-T4"))).toBe(true);
+    expect(lines.some((line) => line.includes("“open/pending”"))).toBe(true);
+
+    const frame = await smokeRenderOpenTuiMixedWidthAssistantText();
+    const frameLines = frame.split(/\r?\n/).map((line) => line.trimEnd());
+    expect(frame).toContain("`.supercodex`");
+    expect(frame).toContain("commit/push");
+    expect(frame).toContain("S18-T4");
+    expect(frame).toContain("“open/pending”");
+    expect(hasAdjacentSplit(frameLines, "com", "mit/push")).toBe(false);
+    expect(hasAdjacentSplit(frameLines, "open/p", "ending")).toBe(false);
+  });
+
   test("keeps session metadata visible in a narrow viewport with the same sidebar structure", async () => {
     const frame = await smokeRenderOpenTuiResponsiveMetadata();
     expect(frame).toContain("metadata stays visible");
@@ -239,3 +260,7 @@ describe("OpenTUI frontend", () => {
     expect(result.durationMs).toBeLessThan(1500);
   });
 });
+
+function hasAdjacentSplit(lines: string[], leftEnd: string, rightStart: string): boolean {
+  return lines.some((line, index) => line.includes(leftEnd) && (lines[index + 1] ?? "").trimStart().startsWith(rightStart));
+}

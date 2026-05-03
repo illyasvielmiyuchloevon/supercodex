@@ -104,15 +104,31 @@ export function wrapLinesByCellWidth(lines: string[], width: number): string[] {
 
     let current = "";
     let currentWidth = 0;
-    for (const char of clean) {
-      const widthForChar = charCellWidth(char);
-      if (widthForChar > 0 && currentWidth > 0 && currentWidth + widthForChar > safeWidth) {
+    for (const token of wrapTokens(clean)) {
+      const tokenWidth = displayCellWidth(token);
+      if (tokenWidth > 0 && currentWidth > 0 && currentWidth + tokenWidth > safeWidth) {
         result.push(current);
         current = "";
         currentWidth = 0;
       }
-      current += char;
-      currentWidth += widthForChar;
+      if (tokenWidth > safeWidth) {
+        const split = splitLongToken(token, safeWidth);
+        for (const [index, segment] of split.entries()) {
+          if (index === 0 && currentWidth === 0) {
+            current = segment;
+            currentWidth = displayCellWidth(segment);
+            continue;
+          }
+          if (currentWidth > 0) {
+            result.push(current);
+          }
+          current = segment;
+          currentWidth = displayCellWidth(segment);
+        }
+        continue;
+      }
+      current += token;
+      currentWidth += tokenWidth;
     }
     if (current || result.length === 0) {
       result.push(current);
@@ -145,6 +161,60 @@ function isCombining(codePoint: number): boolean {
     (codePoint >= 0xfe20 && codePoint <= 0xfe2f) ||
     codePoint === 0x200d
   );
+}
+
+function wrapTokens(value: string): string[] {
+  const tokens: string[] = [];
+  let asciiRun = "";
+  for (const char of value) {
+    if (isAsciiTokenChar(char) || (asciiRun && isAsciiWrapperChar(char)) || isOpeningAsciiWrapperChar(char)) {
+      asciiRun += char;
+      continue;
+    }
+    if (asciiRun) {
+      tokens.push(asciiRun);
+      asciiRun = "";
+    }
+    tokens.push(char);
+  }
+  if (asciiRun) {
+    tokens.push(asciiRun);
+  }
+  return tokens;
+}
+
+function splitLongToken(token: string, width: number): string[] {
+  const safeWidth = Math.max(1, Math.floor(width));
+  const segments: string[] = [];
+  let current = "";
+  let currentWidth = 0;
+  for (const char of token) {
+    const widthForChar = charCellWidth(char);
+    if (widthForChar > 0 && currentWidth > 0 && currentWidth + widthForChar > safeWidth) {
+      segments.push(current);
+      current = "";
+      currentWidth = 0;
+    }
+    current += char;
+    currentWidth += widthForChar;
+  }
+  if (current) {
+    segments.push(current);
+  }
+  return segments.length > 0 ? segments : [token];
+}
+
+function isAsciiTokenChar(char: string): boolean {
+  const codePoint = char.codePointAt(0);
+  return codePoint !== undefined && codePoint > 0x20 && codePoint < 0x7f;
+}
+
+function isOpeningAsciiWrapperChar(char: string): boolean {
+  return char === "“" || char === "‘";
+}
+
+function isAsciiWrapperChar(char: string): boolean {
+  return isOpeningAsciiWrapperChar(char) || char === "”" || char === "’";
 }
 
 function isWide(codePoint: number): boolean {

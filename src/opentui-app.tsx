@@ -870,6 +870,34 @@ export async function smokeRenderOpenTuiStructuredMessages(): Promise<string> {
   return frame;
 }
 
+export async function smokeRenderOpenTuiMixedWidthAssistantText(): Promise<string> {
+  const text = "对齐结果里有一个实际不一致：`.supercodex` 已标记交付并记录 commit/push，但三份要求严格遵守的架构/迁移文档仍写着 S18-T4 “open/pending”。这不是重新规划问题，是交付证据回写漏项；我会把这些文档和轻量假设同步到当前已交付状态，然后跑边界/文档卫生验证。";
+  const setup = await testRender(() => (
+    <AgentSupervisorOpenTuiView
+      project="C:\\repo"
+      runId="mixed-width"
+      mode="managed"
+      transcript={[]}
+      tuiConfig={{ theme: "opencode", themeMode: "dark", resolvedMode: "dark" }}
+      messages={[
+        {
+          id: "assistant-mixed-width",
+          role: "assistant",
+          title: "assistant",
+          status: "completed",
+          parts: [{ id: "assistant-mixed-width-part-1", type: "text", text }],
+        },
+      ]}
+      status={{ mode: "execution", phase: "execution", settings: { model: "gpt-5.5" }, runtimeStatus: "running" }}
+      interactions={[]}
+    />
+  ), { width: 100, height: 30 });
+  await setup.renderOnce();
+  const frame = setup.captureCharFrame();
+  setup.renderer.destroy();
+  return frame;
+}
+
 export async function smokeRenderOpenTuiResponsiveMetadata(): Promise<string> {
   const setup = await testRender(() => (
     <AgentSupervisorOpenTuiView
