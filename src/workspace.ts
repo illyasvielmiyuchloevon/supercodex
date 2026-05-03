@@ -331,10 +331,15 @@ function chooseFromAutoDevState(autoDevState: JsonObject, planTasks: PlanTask[],
   const remaining = stringArray(plan.remaining_task_ids).filter((id) => !completed.has(id));
   const nextAction = stringValue(execution.next_action, "");
   const hasOpenPlanWork = Boolean(currentTaskId) || remaining.length > 0 || planTasks.some((task) => task.status !== "done");
-  const claimsAcceptanceOrDelivery = decision === "DELIVERED" || decision === "PASS_READY_TO_DELIVER" || acceptancePassed(autoDevState);
+  const claimsFinalAcceptanceDecision =
+    decision === "DELIVERED" ||
+    decision === "PASS_READY_TO_DELIVER" ||
+    decision === "FAIL_CONTINUE_NEXT_CYCLE" ||
+    acceptancePassed(autoDevState) ||
+    acceptanceFailed(autoDevState);
   const planReviewComplete = planReviewCompletedForCycle(autoDevState, supervisorSession);
 
-  if (claimsAcceptanceOrDelivery && !planReviewComplete && !hasOpenPlanWork) {
+  if (claimsFinalAcceptanceDecision && !planReviewComplete && !hasOpenPlanWork) {
     return {
       kind: "stage_gate",
       title: "进入 Phase 6 最终目标验收",
@@ -749,9 +754,9 @@ Required durable governance artifacts:
 
 \`.supercodex/AUTO_DEV_STATE.json\` is the machine-readable scheduling source. Markdown files are the human-readable goal, plan, traceability, review, and final acceptance artifacts. Do not recreate old heavy docs trees unless the user explicitly asks for them.
 
-Only Phase 0 may ask the user blocking clarification questions. After Phase 0, fix errors autonomously, keep AUTO_DEV_STATE valid JSON through atomic writes, and do not claim delivery until FINAL_ACCEPTANCE_REPORT says PASS and Phase 7 delivery is complete.
+Only Phase 0 may ask the user blocking clarification questions. After Phase 0, fix errors autonomously, keep AUTO_DEV_STATE valid JSON through atomic writes, and do not claim delivery until FINAL_ACCEPTANCE_REPORT says PASS, SuperCodex has recorded the current Cycle plan-review marker in \`.supercodex/runtime/session.json\`, and Phase 7 delivery is complete.
 
-\`.supercodex/PLAN.md\` should group Stage tasks inside Cycle and Milestone sections. Stage remains the execution unit; Milestone is the intermediate commit/push boundary. Do not create a fresh Codex thread for Stage changes, Milestone commits, or pushes. Phase 7 still owns the final commit/PR closure after final acceptance passes.
+\`.supercodex/PLAN.md\` should group Stage tasks inside Cycle and Milestone sections. Stage remains the execution unit; Milestone is the intermediate commit/push boundary. Do not create a fresh Codex thread for Stage changes, Milestone commits, or pushes. When PLAN is exhausted, SuperCodex must run the full-project Phase 6 plan-review thread before Phase 7. AUTO_DEV_STATE DELIVERED/PASS without the matching current-Cycle plan-review marker is not completion. Phase 7 still owns the final commit/PR closure after final acceptance passes.
 `;
 }
 

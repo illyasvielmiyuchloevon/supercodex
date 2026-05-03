@@ -50,7 +50,7 @@ You are being launched by supercodex, an external Codex app-server loop controll
 3. Read \`.supercodex/FINAL_GOAL.md\`, \`.supercodex/CLARIFICATIONS.md\`, \`.supercodex/ASSUMPTIONS.md\`, \`.supercodex/PRD.md\`, \`.supercodex/ARCHITECTURE.md\`, \`.supercodex/PLAN.md\`, \`.supercodex/TRACEABILITY_MATRIX.md\`, \`.supercodex/CODE_REVIEW_REPORT.md\`, and \`.supercodex/FINAL_ACCEPTANCE_REPORT.md\` if present.
 4. Check git status before edits.
 5. Resume from AUTO_DEV_STATE phase/current task/remaining tasks. Do not restart from scratch.
-6. If PLAN is exhausted, do not deliver. Run or refresh FINAL_ACCEPTANCE_REPORT against FINAL_GOAL first.
+6. If PLAN is exhausted, do not deliver from the plan-cycle thread. Run or refresh FINAL_ACCEPTANCE_REPORT against FINAL_GOAL inside the full-project Phase 6 review.
 
 ## Existing Project Continuity and State Rule
 If this project already has \`.supercodex\`, \`.supercodex/PRD.md\`, \`.supercodex/PLAN.md\`, or \`.supercodex/AUTO_DEV_STATE.json\`, preserve the existing durable state and continue from it by default. Supplement missing lightweight AGENTS.md artifacts first, continue the existing PLAN when it still covers FINAL_GOAL, and do not restart from scratch.
@@ -68,6 +68,7 @@ Do not spawn sub-agents for tiny tasks, overlapping write scopes, or the immedia
 - SuperCodex controls Codex through app-server threads and turns, not through the legacy non-interactive runner.
 - Keep the whole active PLAN in one Codex thread. Do not start a fresh thread merely because the stage or phase changed.
 - Start a fresh normal-work thread only when the PLAN is exhausted and the next work is full-project Final Acceptance / PRD / Architecture / PLAN review for the next cycle.
+- Phase 7 or final done requires the current Cycle Phase 6 review to succeed; SuperCodex records that runtime marker in \`.supercodex/runtime/session.json\`.
 - Explicit operator \`/fresh-next\` requests and hard runtime recovery may still start a fresh thread.
 - Context compaction failure and network interruption are not user blockers. Recover from persistent state and continue.
 ${freshBlock}
@@ -83,7 +84,7 @@ ${operatorBlock}
 ## Execution Contract
 ${executionGuidance}
 
-After all planned work is checked off, run Final Acceptance before marking delivery done. If acceptance fails, update FINAL_ACCEPTANCE_REPORT, set AUTO_DEV_STATE decision to FAIL_CONTINUE_NEXT_CYCLE, revise PRD / ARCHITECTURE / PLAN / TRACEABILITY_MATRIX, and continue the loop. Passing tests, completed PLAN tasks, committed code, or pushed branches are not final completion by themselves.
+After all planned work is checked off, run Final Acceptance before marking delivery done. If acceptance fails, update FINAL_ACCEPTANCE_REPORT, set AUTO_DEV_STATE decision to FAIL_CONTINUE_NEXT_CYCLE, revise PRD / ARCHITECTURE / PLAN / TRACEABILITY_MATRIX, and continue the loop. Passing tests, completed PLAN tasks, committed code, pushed branches, or AUTO_DEV_STATE PASS/FAIL/DELIVERED are not final completion or next-cycle authority by themselves without the current-Cycle Phase 6 plan-review runtime marker.
 
 Inside PLAN, use Stage as the execution unit and Milestone as the intermediate commit/push boundary. Do not create or request a fresh Codex thread because a Stage changed, a Milestone commit happened, or an intermediate push happened; only PLAN completion leads to the full-project Final Acceptance review thread.
 

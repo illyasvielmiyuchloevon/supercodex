@@ -224,6 +224,15 @@ test("chooseNextWork maps final acceptance pass and fail decisions to Phase 7 or
   });
   assert.equal(failWork.kind, "stage_gate");
   assert.equal(failWork.title, "根据最终验收失败创建下一 Cycle");
+
+  const failWithoutReview = chooseNextWork({
+    ...base,
+    supervisorSession: {},
+    autoDevState: { cycle: 1, phase: "PHASE_6_FINAL_ACCEPTANCE", decision: "FAIL_CONTINUE_NEXT_CYCLE", acceptance: { decision: "FAIL" } },
+  });
+  assert.equal(failWithoutReview.kind, "stage_gate");
+  assert.equal(failWithoutReview.source, "final-acceptance");
+  assert.equal(failWithoutReview.title, "进入 Phase 6 最终目标验收");
 });
 
 test("loadSnapshot marks delivered only after Phase 7 delivery closure", async () => {
