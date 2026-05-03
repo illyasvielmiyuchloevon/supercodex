@@ -68,7 +68,7 @@ Do not spawn sub-agents for tiny tasks, overlapping write scopes, or the immedia
 - SuperCodex controls Codex through app-server threads and turns, not through the legacy non-interactive runner.
 - Keep the whole active PLAN in one Codex thread. Do not start a fresh thread merely because the stage or phase changed.
 - Start a fresh normal-work thread only when the PLAN is exhausted and the next work is full-project Final Acceptance / PRD / Architecture / PLAN review for the next cycle.
-- Phase 7 or final done requires the current Cycle Phase 6 review to succeed; SuperCodex records that runtime marker in \`.supercodex/runtime/session.json\`.
+- Phase 7 or final done requires the current Cycle Phase 6 review to succeed.
 - Explicit operator \`/fresh-next\` requests and hard runtime recovery may still start a fresh thread.
 - Context compaction failure and network interruption are not user blockers. Recover from persistent state and continue.
 ${freshBlock}
@@ -84,7 +84,7 @@ ${operatorBlock}
 ## Execution Contract
 ${executionGuidance}
 
-After all planned work is checked off, run Final Acceptance before marking delivery done. If acceptance fails, update FINAL_ACCEPTANCE_REPORT, set AUTO_DEV_STATE decision to FAIL_CONTINUE_NEXT_CYCLE, revise PRD / ARCHITECTURE / PLAN / TRACEABILITY_MATRIX, and continue the loop. Passing tests, completed PLAN tasks, committed code, pushed branches, or AUTO_DEV_STATE PASS/FAIL/DELIVERED are not final completion or next-cycle authority by themselves without the current-Cycle Phase 6 plan-review runtime marker.
+After all planned work is checked off, run Final Acceptance before marking delivery done. If acceptance fails, update FINAL_ACCEPTANCE_REPORT, set AUTO_DEV_STATE decision to FAIL_CONTINUE_NEXT_CYCLE, revise PRD / ARCHITECTURE / PLAN / TRACEABILITY_MATRIX, and continue the loop. Passing tests, completed PLAN tasks, committed code, pushed branches, or AUTO_DEV_STATE PASS/FAIL/DELIVERED are not final completion or next-cycle authority by themselves.
 
 Inside PLAN, use Stage as the execution unit and Milestone as the intermediate commit/push boundary. Do not create or request a fresh Codex thread because a Stage changed, a Milestone commit happened, or an intermediate push happened; only PLAN completion leads to the full-project Final Acceptance review thread.
 

@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { AgentToastRecord } from "../src/opentui/toast";
 import { autocompleteOverlayLayout, formatSuggestionRow } from "../src/opentui/autocomplete";
+import { messagePartDisplayLines } from "../src/opentui/message-list";
+import { wrapTranscriptLineForDisplay } from "../src/opentui/session-view";
 import { pushToast, removeToastById, smokeChooseSlashCommandWithEnter, smokeChooseSlashPrefixCommandWithEnter, smokeOperateCodexInteractionPickerWithKeyboard, smokeOperateStopPickerWithKeyboard, smokeRenderOpenTui, smokeRenderOpenTuiCustomTheme, smokeRenderOpenTuiDialogHost, smokeRenderOpenTuiLongTranscript, smokeRenderOpenTuiModelPicker, smokeRenderOpenTuiPanels, smokeRenderOpenTuiPermissionsPicker, smokeRenderOpenTuiPrefersCanonicalTranscriptLines, smokeRenderOpenTuiResponsiveMetadata, smokeRenderOpenTuiResumePicker, smokeRenderOpenTuiRunningControls, smokeRenderOpenTuiSecondaryCommandPicker, smokeRenderOpenTuiStructuredMessages, smokeRenderOpenTuiToastsAndErrorBoundary, smokeRenderOpenTuiTranscriptUpdateBurst, smokeRenderOpenTuiViewportMatrix, smokeRouteOpenTuiStartCommand, smokeSubmitOpenTuiPromptMultiline, stableSidebarWidth } from "../src/opentui-app";
+import { displayCellWidth } from "../src/display-width";
 import { SUPERCODEX_VERSION } from "../src/version";
 
 describe("OpenTUI frontend", () => {
@@ -126,6 +129,19 @@ describe("OpenTUI frontend", () => {
     expect(frame).toContain("COMMAND");
     expect(frame).toContain("$ npm test");
     expect(frame).toContain("FILE CHANGE");
+  });
+
+  test("pre-wraps mixed Chinese and ASCII text before OpenTUI rendering", () => {
+    const text = "按照项目规则，这个 Phase6 属于最终覆盖目标审核，我会做一个独立验收检查；Explorer 只做缺口核查。";
+    const messageLines = messagePartDisplayLines({ type: "text", text }, 34);
+    const transcriptLines = wrapTranscriptLineForDisplay(`[operator] ${text}`, 36);
+
+    expect(messageLines.length).toBeGreaterThan(1);
+    expect(transcriptLines.length).toBeGreaterThan(1);
+    expect(messageLines.every((line) => displayCellWidth(line) <= 34)).toBe(true);
+    expect(transcriptLines.every((line) => displayCellWidth(line) <= 36)).toBe(true);
+    expect(messageLines.join("")).toBe(text);
+    expect(transcriptLines.join("")).toBe(`[operator] ${text}`);
   });
 
   test("keeps session metadata visible in a narrow viewport with the same sidebar structure", async () => {

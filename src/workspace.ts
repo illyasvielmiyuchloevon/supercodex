@@ -754,9 +754,9 @@ Required durable governance artifacts:
 
 \`.supercodex/AUTO_DEV_STATE.json\` is the machine-readable scheduling source. Markdown files are the human-readable goal, plan, traceability, review, and final acceptance artifacts. Do not recreate old heavy docs trees unless the user explicitly asks for them.
 
-Only Phase 0 may ask the user blocking clarification questions. After Phase 0, fix errors autonomously, keep AUTO_DEV_STATE valid JSON through atomic writes, and do not claim delivery until FINAL_ACCEPTANCE_REPORT says PASS, SuperCodex has recorded the current Cycle plan-review marker in \`.supercodex/runtime/session.json\`, and Phase 7 delivery is complete.
+Only Phase 0 may ask the user blocking clarification questions. After Phase 0, fix errors autonomously, keep AUTO_DEV_STATE valid JSON through atomic writes, and do not claim delivery until FINAL_ACCEPTANCE_REPORT says PASS and Phase 7 delivery is complete.
 
-\`.supercodex/PLAN.md\` should group Stage tasks inside Cycle and Milestone sections. Stage remains the execution unit; Milestone is the intermediate commit/push boundary. Do not create a fresh Codex thread for Stage changes, Milestone commits, or pushes. When PLAN is exhausted, SuperCodex must run the full-project Phase 6 plan-review thread before Phase 7. AUTO_DEV_STATE DELIVERED/PASS without the matching current-Cycle plan-review marker is not completion. Phase 7 still owns the final commit/PR closure after final acceptance passes.
+\`.supercodex/PLAN.md\` should group Stage tasks inside Cycle and Milestone sections. Stage remains the execution unit; Milestone is the intermediate commit/push boundary. Do not create a fresh Codex thread for Stage changes, Milestone commits, or pushes. When PLAN is exhausted, SuperCodex must run the full-project Phase 6 final acceptance before Phase 7. AUTO_DEV_STATE DELIVERED/PASS alone is not completion. Phase 7 still owns the final commit/PR closure after final acceptance passes.
 `;
 }
 

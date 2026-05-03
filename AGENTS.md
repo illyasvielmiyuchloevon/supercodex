@@ -58,7 +58,6 @@
 8. 如果外部循环器重新调用你，你必须读取 `.supercodex/AUTO_DEV_STATE.json`、`.supercodex/FINAL_GOAL.md`、`.supercodex/PLAN.md` 和最近测试日志，从断点继续。
 9. 不要依赖对话上下文保存关键状态；所有关键状态必须写入项目文件。
 10. 只有 Phase 0 允许出现 `clarification.status = "WAITING_FOR_USER"`；进入 Phase 1 后不得再进入等待用户状态。
-11. `.supercodex/AUTO_DEV_STATE.json` 是 Agent 可写的计划与质量状态；`.supercodex/runtime/session.json` 是 SuperCodex 运行时维护的线程与调度标记。Agent 不得手写、伪造或绕过运行时标记。
 
 ### 1.4.1 Codex Thread 边界规则
 
@@ -70,11 +69,10 @@ SuperCodex 的正常执行线程边界必须服从 Plan Cycle，而不是 Stage 
 4. 这个新 thread 必须审查整个项目是否满足最终目标：核对 FINAL_GOAL、PRD、ARCHITECTURE、PLAN、TRACEABILITY_MATRIX、测试、审查和交付证据。
 5. 如果全局审查失败，必须在这个审查步骤中更新 PRD、ARCHITECTURE、PLAN、TRACEABILITY_MATRIX 和 AUTO_DEV_STATE，创建下一 Cycle，然后继续执行新的 PLAN。
 6. 如果全局审查通过，必须编写或更新 `.supercodex/FINAL_ACCEPTANCE_REPORT.md`，再进入最终交付与 PR。
-7. Phase 6 通过必须匹配当前 Cycle 的 SuperCodex 运行时 plan-review 标记：`.supercodex/runtime/session.json` 中 `plan_review_completed = true`，且 `plan_review_cycle` 等于当前 Cycle。
-8. `.supercodex/AUTO_DEV_STATE.json` 中的 `decision = "DELIVERED"`、`decision = "FAIL_CONTINUE_NEXT_CYCLE"`、`acceptance.decision = "PASS"`、`acceptance.decision = "FAIL"` 或 `delivery.*` 不足以跳过 Phase 6，也不足以判定项目完成；缺少当前 Cycle plan-review 标记时，调度器必须重新进入 Phase 6。
-9. 新 Cycle 创建后，旧 Cycle 的 plan-review 标记立即失效；必须等待新 Cycle 的 PLAN 全部完成，并重新执行 Phase 6。
-10. Milestone 边界可以触发阶段性 commit/push，但不得触发 fresh Codex thread，也不得被当作最终交付。
-11. 只有显式 operator `/fresh-next`、没有可恢复 thread、不可恢复 session、或连续 runtime failure 超过恢复阈值，才允许作为异常恢复路径新建 thread；这些不是 Stage/Phase/Milestone 边界。
+7. Plan 完成、测试通过、阶段性 commit/push、或状态文件写成 PASS/FAIL/DELIVERED，都不能跳过 Phase 6，也不能直接判定项目完成或进入下一 Cycle。
+8. 新 Cycle 创建后，必须等待新 Cycle 的 PLAN 全部完成，并重新执行 Phase 6；上一 Cycle 的验收结论不得复用为新 Cycle 的完成结论。
+9. Milestone 边界可以触发阶段性 commit/push，但不得触发 fresh Codex thread，也不得被当作最终交付。
+10. 只有显式 operator `/fresh-next`、没有可恢复 thread、不可恢复 session、或连续 runtime failure 超过恢复阈值，才允许作为异常恢复路径新建 thread；这些不是 Stage/Phase/Milestone 边界。
 
 ### 1.5 按需子代理协作规则
 
@@ -466,12 +464,12 @@ PRD 完成后必须检查：
 
 角色：Product Owner / QA Lead
 
-### 10.0 真实调度门禁
+### 10.0 验收职责
 
-1. Phase 6 是当前 Cycle 的 PLAN 全部完成后，由 SuperCodex 启动的全项目 plan-review thread；它不是普通 plan-cycle thread 里的自评段落。
+1. Phase 6 是当前 Cycle 的 PLAN 全部完成后的全项目最终目标验收；它不是普通开发任务里的自评段落。
 2. Phase 6 必须重新核对最终目标、PRD、架构、PLAN、追踪矩阵、测试、代码审查和交付准备，而不是信任 Plan checklist 已完成。
-3. Phase 6 运行成功后，由 SuperCodex 运行时写入当前 Cycle 的 plan-review 标记。Agent 不需要、也不得手动写入这个标记。
-4. 如果缺少当前 Cycle 的 plan-review 标记，即使 `AUTO_DEV_STATE.json` 或 `FINAL_ACCEPTANCE_REPORT.md` 已写成 PASS、FAIL 或 DELIVERED，也必须重新进入 Phase 6。
+3. Phase 6 PASS 后才能进入 Phase 7；Phase 6 FAIL 时必须回到 Phase 1，更新 PRD、ARCHITECTURE、PLAN 和 TRACEABILITY_MATRIX，创建下一 Cycle。
+4. Plan 完成、测试通过、阶段性提交、或状态文件写成 PASS/FAIL/DELIVERED，都不能替代 Phase 6。
 
 ### 10.1 验收输入
 
@@ -546,7 +544,7 @@ PRD 完成后必须检查：
 
 角色：Release Manager
 
-只有 Phase 6 的 `Decision` 为 `PASS`，且 SuperCodex 运行时已记录当前 Cycle 的 plan-review 成功标记时，才允许进入本阶段。
+只有 Phase 6 的 `Decision` 为 `PASS` 时，才允许进入本阶段。
 
 ### 11.1 README
 
@@ -671,31 +669,6 @@ PRD 完成后必须检查：
 - `WAITING_FOR_USER`
 - `CLOSED`
 
-### 12.2 SuperCodex 运行时 Session 标记
-
-SuperCodex 可以在 `.supercodex/runtime/session.json` 维护运行时线程状态。该文件属于外部循环器内部状态，不是 Agent 需要人工维护的治理文档。
-
-与真实循环调度相关的关键字段：
-
-```json
-{
-  "thread_id": "current-or-last-thread-id",
-  "thread_scope": "plan-cycle | plan-review",
-  "plan_review_completed": true,
-  "plan_review_cycle": "1",
-  "plan_review_thread_id": "phase-6-review-thread-id"
-}
-```
-
-完成判定必须同时满足：
-
-1. `.supercodex/PLAN.md` 当前 Cycle 全部完成。
-2. Phase 6 最终目标验收 PASS。
-3. `.supercodex/runtime/session.json` 存在当前 Cycle 的 `plan_review_completed = true` 与匹配的 `plan_review_cycle`。
-4. Phase 7 最终交付与本地 Git 提交完成。
-
-如果 `AUTO_DEV_STATE.json` 已写成 PASS、FAIL 或 DELIVERED，但缺少第 3 项，SuperCodex 必须继续调度 Phase 6，而不是进入 Phase 7、创建新 Cycle 或结束。
-
 ---
 
 ## 13. 成功判定
@@ -710,9 +683,8 @@ SuperCodex 可以在 `.supercodex/runtime/session.json` 维护运行时线程状
 6. 所有自动测试通过。
 7. `.supercodex/CODE_REVIEW_REPORT.md` 无阻塞问题。
 8. `.supercodex/FINAL_ACCEPTANCE_REPORT.md` 的 Decision 为 `PASS`。
-9. `.supercodex/runtime/session.json` 已记录当前 Cycle 的 plan-review 成功标记。
-10. `README.md` 已更新。
-11. 已完成本地 Git 提交；环境支持时已创建 PR。
+9. `README.md` 已更新。
+10. 已完成本地 Git 提交；环境支持时已创建 PR。
 
 ---
 
@@ -746,8 +718,8 @@ SuperCodex 可以在 `.supercodex/runtime/session.json` 维护运行时线程状
 4. 如果 clarification.status=WAITING_FOR_USER，先处理用户回复，更新 FINAL_GOAL、CLARIFICATIONS、ASSUMPTIONS 和 AUTO_DEV_STATE.json。
 5. 如果 clarification.status=OPEN 且存在当前阻塞问题，可以在 Phase 0 按需提出下一轮问题，但总数不得超过 10。
 6. 如果 clarification.status=CLOSED，禁止提问，按 AUTO_DEV_STATE.json 的 next_action 继续。
-7. 如果 PLAN 当前 Cycle 全部完成，但缺少当前 Cycle 的 plan-review 成功标记，立即进入 Phase 6 最终目标验收。
+7. 如果 PLAN 当前 Cycle 全部完成，立即进入 Phase 6 最终目标验收。
 8. 如果 FINAL_ACCEPTANCE_REPORT 为 FAIL，创建新 Cycle 并继续。
-9. 如果 FINAL_ACCEPTANCE_REPORT 为 PASS，且存在当前 Cycle 的 plan-review 成功标记，进入 Phase 7 交付与 PR。
+9. 如果 FINAL_ACCEPTANCE_REPORT 为 PASS，进入 Phase 7 交付与 PR。
 10. 每次退出前必须更新 .supercodex/AUTO_DEV_STATE.json，写明下一步动作。
 ```

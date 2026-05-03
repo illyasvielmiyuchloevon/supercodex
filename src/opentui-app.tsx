@@ -107,6 +107,7 @@ export function AgentSupervisorOpenTuiView(props: OpenTuiViewProps) {
   const floatingPicker = createMemo(() => globalPicker() ?? (!activePicker() ? interactionPicker() : null));
   const keyboardPicker = createMemo(() => activePicker() ?? interactionPicker());
   const sidebarWidth = createMemo(() => stableSidebarWidth(dimensions().width));
+  const transcriptWidth = createMemo(() => Math.max(12, dimensions().width - sidebarWidth() - 7));
 
   createEffect(() => {
     const picker = activePicker();
@@ -162,6 +163,7 @@ export function AgentSupervisorOpenTuiView(props: OpenTuiViewProps) {
               lines={props.transcript}
               messages={props.messages}
               theme={theme()}
+              contentWidth={transcriptWidth()}
               ref={(handle) => {
                 transcriptView = handle;
               }}
