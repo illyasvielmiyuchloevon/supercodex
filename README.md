@@ -95,6 +95,8 @@ supercodex
 
 `supercodex` without a subcommand starts managed TUI mode. Managed TUI mode is the normal interactive mode: type a request, use slash commands, inspect transcript/history, respond to Codex interactions, and resume saved work.
 
+Plain text is an ordinary task. It can use SuperCodex analysis, planning, execution, testing, and review, but it is not saved as the project final goal and it does not run the final-goal Phase 6/Phase 7 loop. Use `/goal <prompt>` when you explicitly want to reset `.supercodex` state and start a final-goal delivery loop.
+
 ## The Real `/start` Behavior
 
 `/start` is the command for continuing saved work. It does not create a new SuperCodex run.
@@ -138,15 +140,22 @@ After `/resume`, type a normal message to continue that selected run, or use `/s
 `/new` is fresh:
 
 - `/new` creates a new run and fresh Codex thread.
-- `/new <prompt>` creates a new run and immediately sends the prompt.
+- `/new <prompt>` creates a new ordinary task run and immediately sends the prompt.
 - `/clear` is an alias for `/new`.
+
+`/goal <prompt>` is the final-goal entry:
+
+- It resets stale `.supercodex` state for the project.
+- It writes the prompt to `.supercodex/FINAL_GOAL.md`.
+- It enables the full PRD / architecture / PLAN / Phase 6 / Phase 7 delivery loop.
 
 ## Common TUI Commands
 
 ```text
 /start [run-id]       Start/resume the default or selected saved run
 /resume [id|current]  Select a saved session without auto-running, or unpause current
-/new [prompt]         Create a fresh session
+/new [prompt]         Create a fresh ordinary task session
+/goal <prompt>        Reset state and start a final-goal delivery loop
 /model <name>         Set model for the next turn
 /reasoning <effort>   Set reasoning effort for the next turn
 /permissions          Pick Default permissions, Auto-review, or Full access
@@ -248,15 +257,16 @@ Project-local runtime and recovery files:
 ```text
 .supercodex/
   AUTO_DEV_STATE.json
-  FINAL_GOAL.md
-  CLARIFICATIONS.md
-  ASSUMPTIONS.md
-  PRD.md
-  ARCHITECTURE.md
+  TASK.md                  # ordinary task mode
+  FINAL_GOAL.md            # explicit /goal mode
+  CLARIFICATIONS.md        # explicit /goal mode
+  ASSUMPTIONS.md           # explicit /goal mode
+  PRD.md                   # explicit /goal mode
+  ARCHITECTURE.md          # explicit /goal mode
   PLAN.md
-  TRACEABILITY_MATRIX.md
+  TRACEABILITY_MATRIX.md   # explicit /goal mode
   CODE_REVIEW_REPORT.md
-  FINAL_ACCEPTANCE_REPORT.md
+  FINAL_ACCEPTANCE_REPORT.md # explicit /goal mode
   progress.md
   checkpoints.md
   last-action.md

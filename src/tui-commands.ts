@@ -23,9 +23,16 @@ export const slashCommandSpecs: SlashCommandSpec[] = [
   {
     name: "new",
     usage: "/new [prompt]",
-    description: "Start a new Codex/SuperCodex session with a fresh thread.",
+    description: "Start a new ordinary task session with a fresh thread.",
     aliases: ["clear"],
     insertText: "/new ",
+  },
+  {
+    name: "goal",
+    usage: "/goal <prompt>",
+    description: "Reset SuperCodex state and start an explicit final-goal delivery loop.",
+    insertText: "/goal ",
+    requiresArgument: true,
   },
   {
     name: "status",
@@ -194,6 +201,6 @@ export function slashHelpText(): string {
     "Commands:",
     ...slashCommandSpecs.map((command) => `  ${command.usage.padEnd(40)} ${command.description}`),
     "",
-    "Plain text starts a fresh managed session when idle, or steers the active turn when SuperCodex is running. Use /resume to select a saved session, then type a message; use /start [run-id] to auto-run saved work.",
+    "Plain text starts an ordinary task session when idle, or steers the active turn when SuperCodex is running. Use /goal <prompt> to reset state and start a final-goal loop.",
   ].join("\n");
 }

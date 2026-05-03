@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { chooseNextWork, ensureScaffold, loadSnapshot, parsePlanTasks } from "../src/workspace.js";
+import { chooseNextWork, ensureScaffold, ensureScaffoldForMode, loadSnapshot, parsePlanTasks, resetSupercodexGoalState } from "../src/workspace.js";
 
 test("ensureScaffold preserves existing PRD and PLAN while adding gitignore rules", async () => {
   const project = await mkdtemp(join(tmpdir(), "supercodex-"));
@@ -37,6 +37,55 @@ test("ensureScaffold includes lightweight AGENTS.md governance artifacts", async
   assert.equal(state.schema_version, "1.0");
   assert.equal(state.phase, "PHASE_1_PRD");
   assert.equal(state.clarification?.status, "CLOSED");
+});
+
+test("ordinary task scaffold does not create FINAL_GOAL or final acceptance gates", async () => {
+  const project = await mkdtemp(join(tmpdir(), "supercodex-task-mode-"));
+
+  await ensureScaffoldForMode(project, "fix the README typo", { runMode: "task" });
+
+  const task = await readFile(join(project, ".supercodex", "TASK.md"), "utf8");
+  assert.match(task, /fix the README typo/);
+  await assert.rejects(readFile(join(project, ".supercodex", "FINAL_GOAL.md"), "utf8"));
+  await assert.rejects(readFile(join(project, ".supercodex", "FINAL_ACCEPTANCE_REPORT.md"), "utf8"));
+  const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as { run_mode?: string; phase?: string; execution?: { next_action?: string } };
+  assert.equal(state.run_mode, "TASK");
+  assert.equal(state.phase, "PHASE_1_TASK_ANALYSIS");
+  assert.equal(state.execution?.next_action, "START_TASK_ANALYSIS_AND_PLAN");
+  const work = chooseNextWork(await loadSnapshot(project));
+  assert.notEqual(work.title, "进入 Phase 6 最终目标验收");
+  assert.notEqual(work.title, "Phase 7 最终交付与 PR");
+});
+
+test("ordinary task mode stops when PLAN tasks are complete", async () => {
+  const project = await mkdtemp(join(tmpdir(), "supercodex-task-done-"));
+  await ensureScaffoldForMode(project, "fix the README typo", { runMode: "task" });
+  await writeFile(join(project, ".supercodex", "PLAN.md"), "# PLAN\n\n## Stage 1: Done\n\n- [x] Task 1.1: Done\n", "utf8");
+  await writeFile(
+    join(project, ".supercodex", "AUTO_DEV_STATE.json"),
+    JSON.stringify({ schema_version: "1.0", run_mode: "TASK", phase: "PHASE_4_DEVELOPMENT", decision: "IN_PROGRESS", plan: { completed_task_ids: ["1.1"], remaining_task_ids: [] }, execution: {} }),
+    "utf8",
+  );
+
+  const work = chooseNextWork(await loadSnapshot(project));
+
+  assert.equal(work.kind, "done");
+  assert.match(work.reason, /task plan is complete/i);
+});
+
+test("/goal reset removes stale task state and writes the new FINAL_GOAL", async () => {
+  const project = await mkdtemp(join(tmpdir(), "supercodex-goal-reset-"));
+  await ensureScaffoldForMode(project, "old ordinary task", { runMode: "task" });
+  await writeFile(join(project, ".supercodex", "stale.txt"), "stale\n", "utf8");
+
+  await resetSupercodexGoalState(project, "build the full product");
+
+  await assert.rejects(readFile(join(project, ".supercodex", "TASK.md"), "utf8"));
+  await assert.rejects(readFile(join(project, ".supercodex", "stale.txt"), "utf8"));
+  assert.match(await readFile(join(project, ".supercodex", "FINAL_GOAL.md"), "utf8"), /build the full product/);
+  const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as { run_mode?: string; phase?: string };
+  assert.equal(state.run_mode, "GOAL");
+  assert.equal(state.phase, "PHASE_1_PRD");
 });
 
 test("ensureScaffold creates project AGENTS.md once and preserves existing project guidance", async () => {

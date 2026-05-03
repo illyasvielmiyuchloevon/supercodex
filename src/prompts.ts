@@ -9,6 +9,7 @@ export function buildPrompt(input: {
 }): string {
   const { snapshot, work } = input;
   const directOperatorMessage = input.operatorMessage?.trim() ?? "";
+  const taskMode = typeof snapshot.autoDevState.run_mode === "string" && snapshot.autoDevState.run_mode.toUpperCase() === "TASK";
   const state = snapshot.state;
   const previousBlock = input.previousResult
     ? `
@@ -28,23 +29,30 @@ This is a deliberately fresh Codex thread for plan-completion review, explicit o
   const operatorBlock = directOperatorMessage
     ? `
 ## Runtime Operator Intervention
-The user supplied this instruction through the SuperCodex control channel. Treat it as the highest-priority instruction for this turn while preserving FINAL_GOAL, AUTO_DEV_STATE, PRD, PLAN, TRACEABILITY_MATRIX, reports, checkpoints, and git state as durable context. FINAL_GOAL is the root source of truth; PRD, architecture, PLAN, and TRACEABILITY_MATRIX are active interpretations that must be updated when they no longer cover FINAL_GOAL.
+The user supplied this instruction through the SuperCodex control channel. Treat it as the highest-priority instruction for this turn while preserving existing durable state, checkpoints, and git state.
 
 ${directOperatorMessage}
 
-Apply the intervention directly. Do not update .supercodex/PLAN.md or .supercodex/AUTO_DEV_STATE.json unless this instruction explicitly changes the future task plan or acceptance path, or unless PRD coverage, TRACEABILITY_MATRIX, test/review evidence, or FINAL_ACCEPTANCE_REPORT proves that the current governance state is incomplete.
+Apply the intervention directly. In ordinary task mode, do not create or rewrite FINAL_GOAL and do not start final-goal acceptance. In explicit goal mode, FINAL_GOAL remains the root source of truth and PRD, architecture, PLAN, and TRACEABILITY_MATRIX must be updated only when they no longer cover FINAL_GOAL.
 `
     : "";
   const executionGuidance =
-    work.kind === "operator_intervention"
-      ? "Handle the runtime operator message as the actual work item. If the project is already marked delivered and the message is a new change request, update FINAL_GOAL and reopen AUTO_DEV_STATE / PRD / ARCHITECTURE / PLAN / TRACEABILITY_MATRIX as required by AGENTS.md; do not run a synthetic final gate just because all existing PLAN tasks are checked."
-      : "Execute this work item end to end if feasible in this turn. Keep changes scoped to the current phase, task, gate, or required acceptance-driven revision. Update PLAN, TRACEABILITY_MATRIX, AUTO_DEV_STATE, checkpoints, and progress after the task. If the work item is `supplement_docs`, create only missing lightweight AGENTS.md artifacts and preserve existing PRD/PLAN wording unless FINAL_GOAL coverage, traceability, tests, review, or final acceptance proves a gap.";
+    taskMode
+      ? "Execute the ordinary task request end to end. Do lightweight requirement analysis, create or update .supercodex/PLAN.md as needed, implement, test, review, and mark AUTO_DEV_STATE decision TASK_DONE when the task plan is complete. Do not create .supercodex/FINAL_GOAL.md, do not run Phase 6, and do not run Phase 7 unless the user explicitly used /goal."
+      : work.kind === "operator_intervention"
+        ? "Handle the runtime operator message as the actual work item. If the project is already marked delivered and the message is a new change request, update FINAL_GOAL and reopen AUTO_DEV_STATE / PRD / ARCHITECTURE / PLAN / TRACEABILITY_MATRIX as required by AGENTS.md; do not run a synthetic final gate just because all existing PLAN tasks are checked."
+        : "Execute this work item end to end if feasible in this turn. Keep changes scoped to the current phase, task, gate, or required acceptance-driven revision. Update PLAN, TRACEABILITY_MATRIX, AUTO_DEV_STATE, checkpoints, and progress after the task. If the work item is `supplement_docs`, create only missing lightweight AGENTS.md artifacts and preserve existing PRD/PLAN wording unless FINAL_GOAL coverage, traceability, tests, review, or final acceptance proves a gap.";
+  const bootstrapBlock = taskMode
+    ? `## Mandatory Bootstrap
+1. Read AGENTS.md.
+2. Read \`.supercodex/AUTO_DEV_STATE.json\`, \`.supercodex/TASK.md\`, \`.supercodex/PLAN.md\`, \`.supercodex/CODE_REVIEW_REPORT.md\`, checkpoints, and git status if present.
+3. This is ordinary task mode. \`.supercodex/TASK.md\` is the task request. Do not treat it as FINAL_GOAL.
+4. Resume from AUTO_DEV_STATE phase/current task/remaining tasks. If PLAN is exhausted, mark TASK_DONE and stop; do not enter Phase 6 or Phase 7.
 
-  return `# External Supervisor Prompt
-
-You are being launched by supercodex, an external Codex app-server loop controller.
-
-## Mandatory Bootstrap
+## Existing Task Continuity
+Preserve the ordinary task state by default. Repair PLAN/AUTO_DEV_STATE only when they no longer match TASK.md, tests, or the actual code state.
+`
+    : `## Mandatory Bootstrap
 1. Read AGENTS.md.
 2. Read \`.supercodex/AUTO_DEV_STATE.json\`, \`.supercodex/checkpoints.md\`, \`.supercodex/last-action.md\`, and \`.supercodex/last-error.md\` if present.
 3. Read \`.supercodex/FINAL_GOAL.md\`, \`.supercodex/CLARIFICATIONS.md\`, \`.supercodex/ASSUMPTIONS.md\`, \`.supercodex/PRD.md\`, \`.supercodex/ARCHITECTURE.md\`, \`.supercodex/PLAN.md\`, \`.supercodex/TRACEABILITY_MATRIX.md\`, \`.supercodex/CODE_REVIEW_REPORT.md\`, and \`.supercodex/FINAL_ACCEPTANCE_REPORT.md\` if present.
@@ -58,6 +66,16 @@ If this project already has \`.supercodex\`, \`.supercodex/PRD.md\`, \`.supercod
 The continuity rule forbids ungrounded replacement, not required correction. Do not silently replace PRD, rewrite PLAN into an unrelated new strategy, or replan completed/in-progress work merely because a fresh session started. However, when AGENTS.md, FINAL_GOAL, TRACEABILITY_MATRIX, tests, review, FINAL_ACCEPTANCE_REPORT, or an explicit operator instruction proves a gap, update PRD / ARCHITECTURE / PLAN / TRACEABILITY_MATRIX / AUTO_DEV_STATE as needed, write a checkpoint, and continue execution.
 
 FINAL_GOAL is more authoritative than PRD and PLAN. If PRD, architecture, PLAN, or TRACEABILITY_MATRIX conflicts with, omits, narrows, or weakens FINAL_GOAL, repair the lightweight governance artifacts instead of treating the old documents as immutable truth.
+`;
+  const completionContract = taskMode
+    ? "When the ordinary task PLAN is checked off, update AUTO_DEV_STATE to decision TASK_DONE / phase TASK_DONE and stop. Do not create FINAL_ACCEPTANCE_REPORT as a completion gate, do not enter Phase 6, and do not enter Phase 7."
+    : "After all planned work is checked off, run Final Acceptance before marking delivery done. If acceptance fails, update FINAL_ACCEPTANCE_REPORT, set AUTO_DEV_STATE decision to FAIL_CONTINUE_NEXT_CYCLE, revise PRD / ARCHITECTURE / PLAN / TRACEABILITY_MATRIX, and continue the loop. Passing tests, completed PLAN tasks, committed code, pushed branches, or AUTO_DEV_STATE PASS/FAIL/DELIVERED are not final completion or next-cycle authority by themselves.";
+
+  return `# External Supervisor Prompt
+
+You are being launched by supercodex, an external Codex app-server loop controller.
+
+${bootstrapBlock}
 
 ## Sub-Agent Collaboration Policy
 When the current Codex runtime provides sub-agent, delegation, worker, explorer, tester, or reviewer capabilities and policy permits using them, use them as needed for complex work. Prefer sub-agents for independent codebase exploration, disjoint implementation ownership, repeated failure root-cause analysis, parallel testing, code review, security review, or final-goal coverage review.
@@ -84,9 +102,9 @@ ${operatorBlock}
 ## Execution Contract
 ${executionGuidance}
 
-After all planned work is checked off, run Final Acceptance before marking delivery done. If acceptance fails, update FINAL_ACCEPTANCE_REPORT, set AUTO_DEV_STATE decision to FAIL_CONTINUE_NEXT_CYCLE, revise PRD / ARCHITECTURE / PLAN / TRACEABILITY_MATRIX, and continue the loop. Passing tests, completed PLAN tasks, committed code, pushed branches, or AUTO_DEV_STATE PASS/FAIL/DELIVERED are not final completion or next-cycle authority by themselves.
+${completionContract}
 
-Inside PLAN, use Stage as the execution unit and Milestone as the intermediate commit/push boundary. Do not create or request a fresh Codex thread because a Stage changed, a Milestone commit happened, or an intermediate push happened; only PLAN completion leads to the full-project Final Acceptance review thread.
+Inside PLAN, use Stage as the execution unit and Milestone as the intermediate commit/push boundary. Do not create or request a fresh Codex thread because a Stage changed, a Milestone commit happened, or an intermediate push happened; only explicit goal mode PLAN completion leads to the full-project Final Acceptance review thread.
 
 Do not ask the user after Phase 0. If an external credential, network, or remote Git permission is unavailable, continue with local substitutes where possible.
 ${previousBlock}

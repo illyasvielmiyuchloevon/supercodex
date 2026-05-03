@@ -63,7 +63,7 @@ export function StatusSidebar(props: {
             )}
           </For>
           <text fg={props.theme.primary}>Commands</text>
-          <text fg={props.theme.muted}>/new /start /model /reasoning</text>
+          <text fg={props.theme.muted}>/goal /new /start /model</text>
           <text fg={props.theme.muted}>/permissions /sandbox /approval</text>
           <text fg={props.theme.muted}>/auth /interrupt /pause</text>
           <text fg={props.theme.muted}>/resume /status /runs</text>

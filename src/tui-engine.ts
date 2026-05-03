@@ -231,6 +231,8 @@ function sidePanel(status: JsonObject, width: number): string[] {
     `auth: ${String(status.activeAuth ?? "none")}`,
     "",
     "Commands",
+    "/goal <prompt>",
+    "/new [prompt]",
     "/start [run-id]",
     "/model <name>",
     "/reasoning xhigh",

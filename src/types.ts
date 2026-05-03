@@ -8,6 +8,8 @@ export type CodexSandboxMode = "danger-full-access" | "read-only" | "workspace-w
 
 export type CodexApprovalPolicy = "never" | "on-failure" | "on-request" | "untrusted";
 
+export type SupercodexRunMode = "auto" | "goal" | "task";
+
 export interface PlanTask {
   id: string;
   title: string;

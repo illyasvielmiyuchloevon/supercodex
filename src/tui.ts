@@ -36,7 +36,7 @@ import { TuiTranscriptSource } from "./tui-transcript.js";
 import { managedPlainTextAction, shouldCreateFreshRunForManagedMessage } from "./managed-input.js";
 import { runOpenTuiFrontend } from "./opentui-launcher.js";
 import { isTextareaNewlineKey } from "./opentui/textarea-keybindings.js";
-import type { JsonObject } from "./types.js";
+import type { JsonObject, SupercodexRunMode } from "./types.js";
 import {
   displayCellWidth,
   padRightCells,
@@ -77,7 +77,7 @@ async function runLineAttach(options: AttachOptions): Promise<number> {
   console.log(`run: ${activeRunId}`);
   console.log(
     options.managed
-      ? "Type a message to start a fresh session, or /start [run-id] to resume. Type /help for commands."
+      ? "Type a task to start normally, /goal <prompt> for a final-goal loop, or /start [run-id] to resume. Type /help for commands."
       : "Type /help for commands. Plain text is sent as a Codex steering message.",
   );
   printSlashHelp();
@@ -108,6 +108,41 @@ async function runLineAttach(options: AttachOptions): Promise<number> {
     while (true) {
       const line = await rl.question(`\nsupercodex:${activeRunId} (/help)> `);
       if (options.managed) {
+        const goalRequest = parseGoalRequest(line);
+        if (goalRequest !== null) {
+          if (supervisorPromise) {
+            console.log("[supercodex] run is already active; interrupt or wait before starting a new goal.");
+            continue;
+          }
+          if (!goalRequest.trim()) {
+            console.log("Usage: /goal <final goal>");
+            continue;
+          }
+          activeRunId = createFreshRunId();
+          activeRunStarted = true;
+          activeRunIsResume = false;
+          currentEventLog = null;
+          currentStderrLog = null;
+          tail = new LogTail();
+          const started = await startManagedSupervisor({
+            project,
+            runId: activeRunId,
+            goalOrInstruction: goalRequest,
+            operatorIntervention: false,
+            runMode: "goal",
+            resetSupercodexState: true,
+            authManager: options.authManager,
+            appServerOptions: options.appServerOptions ?? defaultAppServerOptions,
+            current: supervisorPromise,
+          });
+          supervisorPromise = started.task;
+          void started.task?.finally(() => {
+            if (supervisorPromise === started.task) {
+              supervisorPromise = null;
+            }
+          });
+          continue;
+        }
         const newRequest = parseNewRequest(line);
         if (newRequest !== null) {
           if (supervisorPromise) {
@@ -132,6 +167,7 @@ async function runLineAttach(options: AttachOptions): Promise<number> {
             runId: activeRunId,
             goalOrInstruction: newRequest,
             operatorIntervention: false,
+            runMode: "task",
             authManager: options.authManager,
             appServerOptions: options.appServerOptions ?? defaultAppServerOptions,
             current: supervisorPromise,
@@ -211,22 +247,23 @@ async function runLineAttach(options: AttachOptions): Promise<number> {
             activeRunStarted,
             activeRunIsResume,
           });
-          if (action === "new_goal") {
+          if (action === "new_task") {
             activeRunId = createFreshRunId();
             activeRunStarted = false;
             activeRunIsResume = false;
             currentEventLog = null;
             currentStderrLog = null;
             tail = new LogTail();
-            action = "initial_goal";
+            action = "initial_task";
           }
-          if (action === "initial_goal") {
+          if (action === "initial_task") {
             activeRunStarted = true;
             const started = await startManagedSupervisor({
               project,
               runId: activeRunId,
               goalOrInstruction: line.trim(),
               operatorIntervention: false,
+              runMode: "task",
               authManager: options.authManager,
               appServerOptions: options.appServerOptions ?? defaultAppServerOptions,
               current: supervisorPromise,
@@ -281,6 +318,8 @@ async function startManagedSupervisor(input: {
   appServerOptions: AppServerOptions;
   current: Promise<number> | null;
   operatorIntervention?: boolean;
+  runMode?: SupercodexRunMode;
+  resetSupercodexState?: boolean;
   report?: (message: string) => void;
 }): Promise<{ task: Promise<number> | null }> {
   const report = input.report ?? ((message: string) => console.log(message));
@@ -298,13 +337,15 @@ async function startManagedSupervisor(input: {
   const config = {
     ...defaultSupervisorConfig(input.project),
     goal: input.operatorIntervention ? "" : instruction,
+    runMode: input.runMode ?? "auto",
+    resetSupercodexState: Boolean(input.resetSupercodexState),
     runId: input.runId,
     authManager: input.authManager,
     operatorIntervention: Boolean(input.operatorIntervention),
     appServerOptions: { ...input.appServerOptions, streamConsole: false },
     supervisorConsole: false,
   };
-  report(input.operatorIntervention ? `[supercodex] starting fresh session ${input.runId}.` : `[supercodex] starting/resuming run ${input.runId}.`);
+  report(input.resetSupercodexState ? `[supercodex] resetting goal state and starting run ${input.runId}.` : input.operatorIntervention ? `[supercodex] starting fresh session ${input.runId}.` : `[supercodex] starting/resuming run ${input.runId}.`);
   const promise = (async () => {
     try {
       const code = await new Supervisor(config).run();
@@ -343,6 +384,21 @@ export function parseNewRequest(rawLine: string): string | null {
   }
   const parsed = parseSlashCommand(line);
   if (parsed.command === "new") {
+    return parsed.arg;
+  }
+  return null;
+}
+
+export function parseGoalRequest(rawLine: string): string | null {
+  const line = rawLine.trim();
+  if (!line) {
+    return null;
+  }
+  if (!line.startsWith("/")) {
+    return null;
+  }
+  const parsed = parseSlashCommand(line);
+  if (parsed.command === "goal") {
     return parsed.arg;
   }
   return null;
@@ -408,7 +464,7 @@ class TerminalTui {
     await this.refreshStatus();
     this.enterScreen();
     await this.pollLogs();
-    this.addLog(this.options.managed ? "Managed TUI ready. Type a message to start a fresh session, or /start [run-id] to resume. Type / for commands." : "Attach-only TUI ready. Type / for commands or plain text to steer.");
+    this.addLog(this.options.managed ? "Managed TUI ready. Type a task normally, /goal <prompt> for a final-goal loop, or /start [run-id] to resume. Type / for commands." : "Attach-only TUI ready. Type / for commands or plain text to steer.");
     this.startPolling();
     this.render();
 
@@ -753,6 +809,11 @@ class TerminalTui {
   private async submit(rawLine: string): Promise<boolean> {
     const line = rawLine.trim();
     if (this.options.managed) {
+      const goalRequest = parseGoalRequest(rawLine);
+      if (goalRequest !== null) {
+        await this.startGoalSession(goalRequest);
+        return false;
+      }
       const newRequest = parseNewRequest(rawLine);
       if (newRequest !== null) {
         await this.startNewSession(newRequest);
@@ -821,17 +882,18 @@ class TerminalTui {
           activeRunStarted: this.activeRunStarted,
           activeRunIsResume: this.activeRunIsResume,
         });
-        if (action === "new_goal") {
+        if (action === "new_task") {
           this.switchActiveRun(createFreshRunId(), "fresh");
-          action = "initial_goal";
+          action = "initial_task";
         }
-        if (action === "initial_goal") {
+        if (action === "initial_task") {
           this.activeRunStarted = true;
           const started = await startManagedSupervisor({
             project: this.project,
             runId: this.activeRunId,
             goalOrInstruction: line,
             operatorIntervention: false,
+            runMode: "task",
             authManager: this.options.authManager,
             appServerOptions: this.options.appServerOptions ?? defaultAppServerOptions,
             current: this.supervisorPromise,
@@ -923,6 +985,48 @@ class TerminalTui {
       runId: this.activeRunId,
       goalOrInstruction: value,
       operatorIntervention: false,
+      runMode: "task",
+      authManager: this.options.authManager,
+      appServerOptions: this.options.appServerOptions ?? defaultAppServerOptions,
+      current: this.supervisorPromise,
+      report: (message) => {
+        this.addLog(message);
+        this.render();
+      },
+    });
+    this.supervisorPromise = started.task;
+    void started.task?.finally(() => {
+      if (this.supervisorPromise === started.task) {
+        this.supervisorPromise = null;
+      }
+      void this.refreshStatus().then(() => this.render());
+    });
+  }
+
+  private async startGoalSession(prompt: string): Promise<void> {
+    if (!this.options.managed) {
+      this.addLog("Attach mode cannot start a final-goal run. Use `supercodex` or `supercodex tui` for managed mode.");
+      return;
+    }
+    if (this.supervisorPromise) {
+      this.addLog("[supercodex] run is already active; interrupt or wait before starting a new goal.");
+      return;
+    }
+    const value = prompt.trim();
+    if (!value) {
+      this.addLog("Usage: /goal <final goal>");
+      return;
+    }
+    this.switchActiveRun(createFreshRunId(), "fresh");
+    this.transcript.appendUser(value);
+    this.activeRunStarted = true;
+    const started = await startManagedSupervisor({
+      project: this.project,
+      runId: this.activeRunId,
+      goalOrInstruction: value,
+      operatorIntervention: false,
+      runMode: "goal",
+      resetSupercodexState: true,
       authManager: this.options.authManager,
       appServerOptions: this.options.appServerOptions ?? defaultAppServerOptions,
       current: this.supervisorPromise,
@@ -999,6 +1103,9 @@ class TerminalTui {
         return false;
       case "new":
         await this.startNewSession(arg);
+        return false;
+      case "goal":
+        await this.startGoalSession(arg);
         return false;
       case "model":
         if (!arg) {
@@ -1202,6 +1309,8 @@ class TerminalTui {
       "",
       "Commands",
       "/start [run-id]",
+      "/goal <prompt>",
+      "/new [prompt]",
       "/model <name>",
       "/reasoning xhigh",
       "/auth <name>",
@@ -1292,6 +1401,9 @@ export async function handleAttachInput(
       return false;
     case "new":
       console.log("This TUI is attach-only. Use `supercodex` or `supercodex tui` to create a new managed session with /new.");
+      return false;
+    case "goal":
+      console.log("This TUI is attach-only. Use `supercodex` or `supercodex tui` to reset state with /goal.");
       return false;
     case "model":
       if (!arg) {

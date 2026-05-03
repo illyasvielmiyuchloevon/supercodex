@@ -29,7 +29,7 @@ import { canonicalSlashCommandName, type SlashCommandSuggestion } from "./tui-co
 import { TuiTranscriptSource } from "./tui-transcript.js";
 import { chooseNextWork, loadSnapshotForRun, loadSupervisorRuntime } from "./workspace.js";
 import { SUPERCODEX_VERSION } from "./version.js";
-import type { JsonObject } from "./types.js";
+import type { JsonObject, SupercodexRunMode } from "./types.js";
 import { managedPlainTextAction } from "./managed-input.js";
 import { readAgentTuiConfig, type AgentTuiConfig } from "./opentui/config";
 import { handleDialogKey as handleSharedDialogKey } from "./opentui/dialog-stack";
@@ -700,6 +700,7 @@ export async function smokeRouteOpenTuiStartCommand(): Promise<{ started: string
     startFreshSession: async (prompt) => {
       calls.fresh.push(prompt ?? "");
     },
+    startGoalSession: async () => {},
   });
 
   return calls;
@@ -1366,7 +1367,7 @@ function OpenTuiRuntime(props: {
   onMount(() => {
     transcript.appendLocal(
       props.mode === "managed"
-        ? "OpenTUI managed frontend ready. Type a goal to start a fresh run, or /start [run-id] to resume."
+        ? "OpenTUI managed frontend ready. Type a task to start normally, /goal <prompt> for a final-goal loop, or /start [run-id] to resume."
         : "OpenTUI attach frontend ready. Type an intervention or / command.",
     );
     publishTranscript();
@@ -1400,22 +1401,23 @@ function OpenTuiRuntime(props: {
         activeRunStarted: activeRunStarted(),
         activeRunIsResume: activeRunIsResume(),
       });
-      if (action === "new_goal") {
+      if (action === "new_task") {
         const previousRunId = runId();
         const nextRunId = createFreshRunId();
         setRunId(nextRunId);
         await copySupervisorSessionPreferences(props.project, previousRunId, nextRunId);
         transcript.reset();
         appendUser(transcript, publishTranscript, value);
-        action = "initial_goal";
+        action = "initial_task";
       }
-      if (action === "initial_goal") {
+      if (action === "initial_task") {
         setActiveRunStarted(true);
         setSupervisorTask(startSupervisor({
           project: props.project,
           runId: runId(),
           goalOrInstruction: value,
           operatorIntervention: false,
+          runMode: "task",
           authManager: props.authManager,
           appServerOptions: props.appServerOptions,
           transcript,
@@ -1558,6 +1560,43 @@ function OpenTuiRuntime(props: {
       runId: nextRunId,
       goalOrInstruction: value,
       operatorIntervention: false,
+      runMode: "task",
+      authManager: props.authManager,
+      appServerOptions: props.appServerOptions,
+      transcript,
+      publishTranscript,
+      clearTask: () => setSupervisorTask(null),
+    }));
+  };
+
+  const startGoalSession = async (prompt = "") => {
+    closePicker();
+    if (props.mode !== "managed") {
+      appendLocal(transcript, publishTranscript, "Attach mode cannot start a final-goal run. Use managed TUI for /goal.");
+      return;
+    }
+    if (supervisorTask()) {
+      appendLocal(transcript, publishTranscript, "Supervisor is already running; interrupt or wait before starting a new goal.");
+      return;
+    }
+    const value = prompt.trim();
+    if (!value) {
+      appendLocal(transcript, publishTranscript, "Usage: /goal <final goal>");
+      return;
+    }
+    const nextRunId = createFreshRunId();
+    setRunId(nextRunId);
+    setActiveRunStarted(true);
+    setActiveRunIsResume(false);
+    transcript.reset();
+    appendUser(transcript, publishTranscript, value);
+    setSupervisorTask(startSupervisor({
+      project: props.project,
+      runId: nextRunId,
+      goalOrInstruction: value,
+      operatorIntervention: false,
+      runMode: "goal",
+      resetSupercodexState: true,
       authManager: props.authManager,
       appServerOptions: props.appServerOptions,
       transcript,
@@ -1663,6 +1702,7 @@ function OpenTuiRuntime(props: {
       startSavedRun,
       resumeSavedRun,
       startFreshSession,
+      startGoalSession,
       showResumePicker,
       showModelPicker,
       showReasoningPicker,
@@ -1737,6 +1777,7 @@ async function handleOpenTuiCommand(input: {
   resumeSavedRun: (runId: string) => void | Promise<void>;
   startSavedRun: (runId: string) => void | Promise<void>;
   startFreshSession: (prompt?: string) => void | Promise<void>;
+  startGoalSession: (prompt?: string) => void | Promise<void>;
   showResumePicker?: (sessions: RunSessionSummary[]) => void;
   showModelPicker?: () => void;
   showReasoningPicker?: () => void;
@@ -1749,7 +1790,7 @@ async function handleOpenTuiCommand(input: {
   switch (parsed.command) {
     case "":
     case "help":
-      appendLocal(input.transcript, input.publishTranscript, "Commands: /new [prompt], /start [run-id], /model <name>, /reasoning <effort>, /auth <name>, /permissions, /sandbox, /approval, /interrupt [prompt], /pause, /resume, /approve, /deny, /answer <text>, /exit");
+      appendLocal(input.transcript, input.publishTranscript, "Commands: /goal <prompt>, /new [prompt], /start [run-id], /model <name>, /reasoning <effort>, /auth <name>, /permissions, /sandbox, /approval, /interrupt [prompt], /pause, /resume, /approve, /deny, /answer <text>, /exit");
       return;
     case "status":
       appendLocal(input.transcript, input.publishTranscript, JSON.stringify(input.status, null, 2));
@@ -1775,6 +1816,9 @@ async function handleOpenTuiCommand(input: {
     }
     case "new":
       await input.startFreshSession(parsed.arg);
+      return;
+    case "goal":
+      await input.startGoalSession(parsed.arg);
       return;
     case "model":
       if (!parsed.arg && input.showModelPicker) {
@@ -2174,6 +2218,8 @@ function startSupervisor(input: {
   runId: string;
   goalOrInstruction: string;
   operatorIntervention: boolean;
+  runMode?: SupercodexRunMode;
+  resetSupercodexState?: boolean;
   authManager: CodexAuthManager;
   appServerOptions: AppServerOptions;
   transcript: TuiTranscriptSource;
@@ -2184,6 +2230,8 @@ function startSupervisor(input: {
   const config = {
     ...defaultSupervisorConfig(input.project),
     goal: input.goalOrInstruction,
+    runMode: input.runMode ?? "auto",
+    resetSupercodexState: Boolean(input.resetSupercodexState),
     runId: input.runId,
     authManager: input.authManager,
     operatorIntervention: input.operatorIntervention,

@@ -1,4 +1,4 @@
-export type ManagedPlainTextAction = "initial_goal" | "new_goal" | "steer";
+export type ManagedPlainTextAction = "initial_task" | "new_task" | "steer";
 
 export function managedPlainTextAction(input: {
   supervisorRunning: boolean;
@@ -9,10 +9,10 @@ export function managedPlainTextAction(input: {
     return "steer";
   }
   if (!input.activeRunStarted && !input.activeRunIsResume) {
-    return "initial_goal";
+    return "initial_task";
   }
   if (input.activeRunStarted && !input.activeRunIsResume) {
-    return "new_goal";
+    return "new_task";
   }
   return "steer";
 }
@@ -22,5 +22,5 @@ export function shouldCreateFreshRunForManagedMessage(input: {
   activeRunStarted: boolean;
   activeRunIsResume: boolean;
 }): boolean {
-  return managedPlainTextAction(input) === "new_goal";
+  return managedPlainTextAction(input) === "new_task";
 }

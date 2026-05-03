@@ -6,9 +6,11 @@ import { buildPrompt } from "./prompts.js";
 import {
   chooseNextWork,
   ensureScaffold,
+  ensureScaffoldForMode,
   loadSnapshotForRun,
   recordCheckpoint,
   recordProgress,
+  resetSupercodexGoalState,
   saveSupervisorSession,
 } from "./workspace.js";
 import {
@@ -19,7 +21,7 @@ import {
   sanitizeRunId,
   type SupervisorRuntimeSettings,
 } from "./settings.js";
-import type { CodexRunResult, WorkItem } from "./types.js";
+import type { CodexRunResult, SupercodexRunMode, WorkItem } from "./types.js";
 import { isRecoverableClassification, isRunOk } from "./types.js";
 
 export interface SupervisorConfig {
@@ -36,6 +38,8 @@ export interface SupervisorConfig {
   appServerOptions: AppServerOptions;
   authManager?: CodexAuthManager | null;
   operatorIntervention?: boolean;
+  runMode?: SupercodexRunMode;
+  resetSupercodexState?: boolean;
   runId?: string | null;
   supervisorConsole: boolean;
 }
@@ -68,6 +72,8 @@ export function defaultSupervisorConfig(project: string): SupervisorConfig {
     appServerOptions: defaultAppServerOptions,
     authManager: null,
     operatorIntervention: false,
+    runMode: "auto",
+    resetSupercodexState: false,
     runId: "default",
     supervisorConsole: true,
   };
@@ -132,7 +138,13 @@ export class Supervisor {
   async run(): Promise<number> {
     const project = resolve(this.config.project);
     const runId = sanitizeRunId(this.config.runId);
-    await ensureScaffold(project, this.config.goal);
+    if (this.config.resetSupercodexState) {
+      await resetSupercodexGoalState(project, this.config.goal);
+    } else if ((this.config.runMode ?? "auto") === "auto") {
+      await ensureScaffold(project, this.config.goal);
+    } else {
+      await ensureScaffoldForMode(project, this.config.goal, { runMode: this.config.runMode });
+    }
 
     let previousResult: CodexRunResult | null = null;
     let consecutiveFailures = 0;

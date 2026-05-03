@@ -11,6 +11,7 @@ import {
   createTerminalFrame,
   normalizePastedText,
   parseResumeRequest,
+  parseGoalRequest,
   parseNewRequest,
   parseStartRequest,
   resumeSelectionMessage,
@@ -199,6 +200,14 @@ test("managed tui parses /new and its Codex-style alias as a fresh session reque
   assert.equal(parseNewRequest("/start default"), null);
 });
 
+test("managed tui parses /goal as the explicit final-goal reset command", () => {
+  assert.equal(parseGoalRequest(""), null);
+  assert.equal(parseGoalRequest("/goal"), "");
+  assert.equal(parseGoalRequest("/goal Build the whole product"), "Build the whole product");
+  assert.equal(parseGoalRequest("plain text"), null);
+  assert.equal(parseGoalRequest("/new Build the whole product"), null);
+});
+
 test("managed tui parses /resume as a session picker or manual selector", () => {
   assert.equal(parseResumeRequest(""), null);
   assert.equal(parseResumeRequest("/resume"), "");
@@ -326,7 +335,7 @@ test("managed plain input keeps a /start-selected run instead of opening fresh",
       activeRunStarted: false,
       activeRunIsResume: false,
     }),
-    "initial_goal",
+    "initial_task",
   );
   assert.equal(
     managedPlainTextAction({
@@ -334,7 +343,7 @@ test("managed plain input keeps a /start-selected run instead of opening fresh",
       activeRunStarted: true,
       activeRunIsResume: false,
     }),
-    "new_goal",
+    "new_task",
   );
   assert.equal(
     managedPlainTextAction({
