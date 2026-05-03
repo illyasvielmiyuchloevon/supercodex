@@ -1596,6 +1596,7 @@ function OpenTuiRuntime(props: {
       runId: nextRunId,
       goalOrInstruction: value,
       operatorIntervention: false,
+      goalMode: true,
       resetSupercodexState: true,
       authManager: props.authManager,
       appServerOptions: props.appServerOptions,
@@ -2218,6 +2219,7 @@ function startSupervisor(input: {
   runId: string;
   goalOrInstruction: string;
   operatorIntervention: boolean;
+  goalMode?: boolean;
   skipScaffold?: boolean;
   resetSupercodexState?: boolean;
   authManager: CodexAuthManager;
@@ -2230,6 +2232,7 @@ function startSupervisor(input: {
   const config = {
     ...defaultSupervisorConfig(input.project),
     goal: input.operatorIntervention ? "" : input.goalOrInstruction,
+    goalMode: Boolean(input.goalMode),
     skipScaffold: Boolean(input.skipScaffold),
     resetSupercodexState: Boolean(input.resetSupercodexState),
     runId: input.runId,

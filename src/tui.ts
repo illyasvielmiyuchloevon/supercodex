@@ -129,6 +129,7 @@ async function runLineAttach(options: AttachOptions): Promise<number> {
             runId: activeRunId,
             goalOrInstruction: goalRequest,
             operatorIntervention: false,
+            goalMode: true,
             resetSupercodexState: true,
             authManager: options.authManager,
             appServerOptions: options.appServerOptions ?? defaultAppServerOptions,
@@ -318,6 +319,7 @@ async function startManagedSupervisor(input: {
   appServerOptions: AppServerOptions;
   current: Promise<number> | null;
   operatorIntervention?: boolean;
+  goalMode?: boolean;
   skipScaffold?: boolean;
   resetSupercodexState?: boolean;
   report?: (message: string) => void;
@@ -337,6 +339,7 @@ async function startManagedSupervisor(input: {
   const config = {
     ...defaultSupervisorConfig(input.project),
     goal: input.operatorIntervention ? "" : instruction,
+    goalMode: Boolean(input.goalMode),
     skipScaffold: Boolean(input.skipScaffold),
     resetSupercodexState: Boolean(input.resetSupercodexState),
     runId: input.runId,
@@ -1026,6 +1029,7 @@ class TerminalTui {
       runId: this.activeRunId,
       goalOrInstruction: value,
       operatorIntervention: false,
+      goalMode: true,
       resetSupercodexState: true,
       authManager: this.options.authManager,
       appServerOptions: this.options.appServerOptions ?? defaultAppServerOptions,

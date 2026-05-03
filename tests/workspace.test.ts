@@ -33,10 +33,17 @@ test("ensureScaffold includes lightweight AGENTS.md governance artifacts", async
   assert.match(plan, /#### Stage 1:/);
   assert.match(plan, /#### Milestone Gate/);
   assert.match(plan, /Milestone commit created/);
-  const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as { schema_version?: string; phase?: string; clarification?: { status?: string } };
+  const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as { schema_version?: string; goal_mode?: boolean; entry_mode?: string; phase?: string; clarification?: { status?: string } };
   assert.equal(state.schema_version, "1.0");
+  assert.equal(state.goal_mode, true);
+  assert.equal(state.entry_mode, "GOAL");
   assert.equal(state.phase, "PHASE_1_PRD");
   assert.equal(state.clarification?.status, "CLOSED");
+  for (const legacyDoc of ["progress.md", "checkpoints.md", "recovery.md", "last-error.md", "last-action.md"]) {
+    await assert.rejects(readFile(join(project, ".supercodex", legacyDoc), "utf8"));
+  }
+  const progressLog = await readFile(join(project, ".supercodex", "logs", "supercodex", "progress.jsonl"), "utf8");
+  assert.match(progressLog, /"event":"bootstrap"/);
 });
 
 test("/goal reset removes stale SuperCodex state and writes the new FINAL_GOAL", async () => {
@@ -48,8 +55,40 @@ test("/goal reset removes stale SuperCodex state and writes the new FINAL_GOAL",
 
   await assert.rejects(readFile(join(project, ".supercodex", "stale.txt"), "utf8"));
   assert.match(await readFile(join(project, ".supercodex", "FINAL_GOAL.md"), "utf8"), /build the full product/);
-  const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as { phase?: string };
+  const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as { goal_mode?: boolean; entry_mode?: string; phase?: string };
+  assert.equal(state.goal_mode, true);
+  assert.equal(state.entry_mode, "GOAL");
   assert.equal(state.phase, "PHASE_1_PRD");
+});
+
+test("ensureScaffold without an explicit goal does not activate goal mode", async () => {
+  const project = await mkdtemp(join(tmpdir(), "supercodex-no-goal-mode-"));
+
+  await ensureScaffold(project);
+
+  const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as { goal_mode?: boolean; entry_mode?: string; phase?: string };
+  assert.equal(state.goal_mode, false);
+  assert.equal(state.entry_mode, "UNSET");
+  assert.equal(state.phase, "PHASE_0_CLARIFICATION");
+  const snapshot = await loadSnapshot(project);
+  assert.equal(snapshot.autoDevState.goal_mode, false);
+  assert.equal(snapshot.autoDevState.entry_mode, "UNSET");
+});
+
+test("loadSnapshot does not infer goal mode from FINAL_GOAL without an explicit marker", async () => {
+  const project = await mkdtemp(join(tmpdir(), "supercodex-legacy-goal-mode-"));
+  await mkdir(join(project, ".supercodex"), { recursive: true });
+  await writeFile(join(project, ".supercodex", "FINAL_GOAL.md"), "# FINAL_GOAL\n\n## 用户原始目标\nBuild the whole product\n", "utf8");
+  await writeFile(
+    join(project, ".supercodex", "AUTO_DEV_STATE.json"),
+    JSON.stringify({ schema_version: "1.0", phase: "PHASE_4_DEVELOPMENT", plan: {} }),
+    "utf8",
+  );
+
+  const snapshot = await loadSnapshot(project);
+
+  assert.equal(snapshot.autoDevState.goal_mode, false);
+  assert.equal(snapshot.autoDevState.entry_mode, "UNSET");
 });
 
 test("ensureScaffold creates project AGENTS.md once and preserves existing project guidance", async () => {

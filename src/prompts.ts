@@ -9,6 +9,9 @@ export function buildPrompt(input: {
 }): string {
   const { snapshot, work } = input;
   const directOperatorMessage = input.operatorMessage?.trim() ?? "";
+  const goalMode =
+    snapshot.autoDevState.goal_mode === true ||
+    (typeof snapshot.autoDevState.entry_mode === "string" && snapshot.autoDevState.entry_mode.toUpperCase() === "GOAL");
   const state = snapshot.state;
   const previousBlock = input.previousResult
     ? `
@@ -22,13 +25,13 @@ Recover by reading the persistent project state first. Do not ask the user.
     : "";
   const freshBlock = input.forceFreshSession
     ? `
-This is a deliberately fresh Codex thread for plan-completion review, explicit operator request, or repeated failure recovery. Use only repository files, .supercodex/AUTO_DEV_STATE.json, lightweight .supercodex governance artifacts, checkpoints, and git history as truth.
+This is a deliberately fresh Codex thread for plan-completion review, explicit operator request, or repeated failure recovery. Use only repository files, .supercodex/AUTO_DEV_STATE.json, lightweight .supercodex governance artifacts, SuperCodex runtime/log state, and git history as truth.
 `
     : "";
   const operatorBlock = directOperatorMessage
     ? `
 ## Runtime Operator Intervention
-The user supplied this instruction through the SuperCodex control channel. Treat it as the highest-priority instruction for this turn while preserving existing durable state, checkpoints, and git state.
+The user supplied this instruction through the SuperCodex control channel. Treat it as the highest-priority instruction for this turn while preserving existing durable state, runtime state, and git state.
 
 ${directOperatorMessage}
 
@@ -37,11 +40,15 @@ Apply the intervention directly. Unless this run was explicitly started as a fin
     : "";
   const executionGuidance =
     work.kind === "operator_intervention"
-      ? "Handle the runtime operator message as the actual work item. Do concise requirement analysis, inspect the repository, implement, test, and report the result. Do not create .supercodex/FINAL_GOAL.md or run Phase 6/Phase 7 unless a final-goal state already exists and the instruction is clearly part of that ongoing delivery loop."
-      : "Execute this work item end to end if feasible in this turn. Keep changes scoped to the current phase, task, gate, or required acceptance-driven revision. Update PLAN, TRACEABILITY_MATRIX, AUTO_DEV_STATE, checkpoints, and progress after the task. If the work item is `supplement_docs`, create only missing lightweight AGENTS.md artifacts and preserve existing PRD/PLAN wording unless FINAL_GOAL coverage, traceability, tests, review, or final acceptance proves a gap.";
+      ? goalMode
+        ? "Handle the runtime operator message as the actual work item inside the active goal-mode delivery loop. Preserve FINAL_GOAL as the root source of truth and update PRD / ARCHITECTURE / PLAN / TRACEABILITY_MATRIX / AUTO_DEV_STATE only when the operator instruction changes or repairs that goal loop."
+        : "Handle the runtime operator message as the actual work item. Do concise requirement analysis, inspect the repository, implement, test, and report the result. Do not create .supercodex/FINAL_GOAL.md or run Phase 6/Phase 7 unless a final-goal state already exists and the instruction is clearly part of that ongoing delivery loop."
+      : goalMode
+        ? "Execute this work item end to end if feasible in this turn. Keep changes scoped to the current phase, task, gate, or required acceptance-driven revision. Update PLAN, TRACEABILITY_MATRIX, AUTO_DEV_STATE, and SuperCodex runtime/log state after the task. If the work item is `supplement_docs`, create only missing lightweight AGENTS.md artifacts and preserve existing PRD/PLAN wording unless FINAL_GOAL coverage, traceability, tests, review, or final acceptance proves a gap."
+        : "Execute this non-goal work item end to end if feasible in this turn. Do concise requirement analysis, inspect the repository, implement, test, and report the result. Do not create .supercodex/FINAL_GOAL.md and do not run Phase 6/Phase 7 for non-goal work.";
   const bootstrapBlock = `## Mandatory Bootstrap
 1. Read AGENTS.md.
-2. Read \`.supercodex/AUTO_DEV_STATE.json\`, \`.supercodex/checkpoints.md\`, \`.supercodex/last-action.md\`, and \`.supercodex/last-error.md\` if present.
+2. Read \`.supercodex/AUTO_DEV_STATE.json\`, \`.supercodex/runtime/\`, and \`.supercodex/logs/\` if present.
 3. Read \`.supercodex/FINAL_GOAL.md\`, \`.supercodex/CLARIFICATIONS.md\`, \`.supercodex/ASSUMPTIONS.md\`, \`.supercodex/PRD.md\`, \`.supercodex/ARCHITECTURE.md\`, \`.supercodex/PLAN.md\`, \`.supercodex/TRACEABILITY_MATRIX.md\`, \`.supercodex/CODE_REVIEW_REPORT.md\`, and \`.supercodex/FINAL_ACCEPTANCE_REPORT.md\` if present.
 4. Check git status before edits.
 5. Resume from AUTO_DEV_STATE phase/current task/remaining tasks. Do not restart from scratch.
@@ -50,14 +57,16 @@ Apply the intervention directly. Unless this run was explicitly started as a fin
 ## Existing Project Continuity and State Rule
 If this project already has \`.supercodex\`, \`.supercodex/PRD.md\`, \`.supercodex/PLAN.md\`, or \`.supercodex/AUTO_DEV_STATE.json\`, preserve the existing durable state and continue from it by default. Supplement missing lightweight AGENTS.md artifacts first, continue the existing PLAN when it still covers FINAL_GOAL, and do not restart from scratch.
 
-The continuity rule forbids ungrounded replacement, not required correction. Do not silently replace PRD, rewrite PLAN into an unrelated new strategy, or replan completed/in-progress work merely because a fresh session started. However, when AGENTS.md, FINAL_GOAL, TRACEABILITY_MATRIX, tests, review, FINAL_ACCEPTANCE_REPORT, or an explicit operator instruction proves a gap, update PRD / ARCHITECTURE / PLAN / TRACEABILITY_MATRIX / AUTO_DEV_STATE as needed, write a checkpoint, and continue execution.
+The continuity rule forbids ungrounded replacement, not required correction. Do not silently replace PRD, rewrite PLAN into an unrelated new strategy, or replan completed/in-progress work merely because a fresh session started. However, when AGENTS.md, FINAL_GOAL, TRACEABILITY_MATRIX, tests, review, FINAL_ACCEPTANCE_REPORT, or an explicit operator instruction proves a gap, update PRD / ARCHITECTURE / PLAN / TRACEABILITY_MATRIX / AUTO_DEV_STATE as needed, update runtime/log state, and continue execution.
 
 FINAL_GOAL is more authoritative than PRD and PLAN. If PRD, architecture, PLAN, or TRACEABILITY_MATRIX conflicts with, omits, narrows, or weakens FINAL_GOAL, repair the lightweight governance artifacts instead of treating the old documents as immutable truth.
 `;
   const completionContract =
-    work.kind === "operator_intervention"
-      ? "For an operator-only instruction without an existing FINAL_GOAL loop, finish the requested work, test what changed, and stop with a clear result. Do not synthesize FINAL_ACCEPTANCE_REPORT, Phase 6, Phase 7, or FINAL_GOAL for that instruction."
-      : "After all planned work is checked off, run Final Acceptance before marking delivery done. If acceptance fails, update FINAL_ACCEPTANCE_REPORT, set AUTO_DEV_STATE decision to FAIL_CONTINUE_NEXT_CYCLE, revise PRD / ARCHITECTURE / PLAN / TRACEABILITY_MATRIX, and continue the loop. Passing tests, completed PLAN tasks, committed code, pushed branches, or AUTO_DEV_STATE PASS/FAIL/DELIVERED are not final completion or next-cycle authority by themselves.";
+    goalMode
+      ? work.kind === "operator_intervention"
+        ? "Because this run is in goal mode, keep the final-goal delivery loop intact: after planned goal work is checked off, run Final Acceptance before marking delivery done."
+        : "After all planned work is checked off, run Final Acceptance before marking delivery done. If acceptance fails, update FINAL_ACCEPTANCE_REPORT, set AUTO_DEV_STATE decision to FAIL_CONTINUE_NEXT_CYCLE, revise PRD / ARCHITECTURE / PLAN / TRACEABILITY_MATRIX, and continue the loop. Passing tests, completed PLAN tasks, committed code, pushed branches, or AUTO_DEV_STATE PASS/FAIL/DELIVERED are not final completion or next-cycle authority by themselves."
+      : "For non-goal work, finish the requested work, test what changed, and stop with a clear result. Do not synthesize FINAL_ACCEPTANCE_REPORT, Phase 6, Phase 7, or FINAL_GOAL for that instruction.";
 
   return `# External Supervisor Prompt
 
@@ -85,6 +94,7 @@ ${freshBlock}
 - title: ${work.title}
 - reason: ${work.reason}
 - source: ${work.source}
+- goal_mode: ${goalMode ? "active" : "inactive"}
 ${operatorBlock}
 
 ## Execution Contract

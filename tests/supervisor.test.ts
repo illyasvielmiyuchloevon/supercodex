@@ -356,7 +356,7 @@ test("operator message on a done project runs as supervised intervention without
   assert.equal(state.decision, "DELIVERED");
 });
 
-test("fresh TUI operator mode wraps the message while prioritizing it over unfinished plan work", async () => {
+test("fresh TUI operator mode sends plain input without the supervisor prompt", async () => {
   const project = await mkdtemp(join(tmpdir(), "supercodex-fresh-intervention-"));
   await writeProjectState(project);
   const message = "这是一次新的普通输入，不是 /start 续跑";
@@ -372,6 +372,7 @@ test("fresh TUI operator mode wraps the message while prioritizing it over unfin
     ...defaultSupervisorConfig(project),
     maxCycles: 1,
     operatorIntervention: true,
+    skipScaffold: true,
     retryBaseSeconds: 0,
     retryMaxSeconds: 0,
     runId: "session-fresh",
@@ -380,10 +381,9 @@ test("fresh TUI operator mode wraps the message while prioritizing it over unfin
   const code = await new Supervisor(config, runner, async () => undefined).run();
 
   assert.equal(code, 0);
-  assert.match(capturedPrompt, /External Supervisor Prompt/);
-  assert.match(capturedPrompt, /Runtime Operator Intervention/);
-  assert.match(capturedPrompt, /kind: operator_intervention/);
-  assert.match(capturedPrompt, new RegExp(message));
+  assert.equal(capturedPrompt, message);
+  assert.doesNotMatch(capturedPrompt, /External Supervisor Prompt/);
+  assert.doesNotMatch(capturedPrompt, /Runtime Operator Intervention/);
   assert.doesNotMatch(capturedPrompt, /kind: task/);
 });
 
@@ -411,10 +411,41 @@ test("fresh operator instruction does not scaffold FINAL_GOAL without /goal rese
   const code = await new Supervisor(config, runner, async () => undefined).run();
 
   assert.equal(code, 0);
-  assert.match(capturedPrompt, /Runtime Operator Intervention/);
-  assert.match(capturedPrompt, new RegExp(message));
+  assert.equal(capturedPrompt, message);
+  assert.doesNotMatch(capturedPrompt, /External Supervisor Prompt/);
+  assert.doesNotMatch(capturedPrompt, /Runtime Operator Intervention/);
   assert.doesNotMatch(capturedPrompt, /Not provided yet\./);
   await assert.rejects(readFile(join(project, ".supercodex", "FINAL_GOAL.md"), "utf8"));
+});
+
+test("/goal reset still injects the supervisor prompt for the goal loop", async () => {
+  const project = await mkdtemp(join(tmpdir(), "supercodex-goal-prompt-"));
+  const message = "把整个产品做完";
+  let capturedPrompt = "";
+  const runner: Runner = {
+    async run(input) {
+      capturedPrompt = input.prompt;
+      return result("thr_goal");
+    },
+  };
+  const config = {
+    ...defaultSupervisorConfig(project),
+    goal: message,
+    goalMode: true,
+    resetSupercodexState: true,
+    maxCycles: 1,
+    retryBaseSeconds: 0,
+    retryMaxSeconds: 0,
+    runId: "session-goal",
+  };
+
+  const code = await new Supervisor(config, runner, async () => undefined).run();
+
+  assert.equal(code, 0);
+  assert.match(capturedPrompt, /External Supervisor Prompt/);
+  assert.match(capturedPrompt, /goal_mode: active/);
+  assert.match(capturedPrompt, /FINAL_GOAL\.md/);
+  assert.match(await readFile(join(project, ".supercodex", "FINAL_GOAL.md"), "utf8"), new RegExp(message));
 });
 
 async function writeProjectState(project: string): Promise<void> {

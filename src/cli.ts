@@ -172,9 +172,10 @@ async function cmdRun(args: ParsedArgs): Promise<number> {
   const project = await projectFromArgs(args);
   const dryRun = booleanFlag(args, "dry-run");
   const explicitMaxCycles = optionalNumberFlag(args, "max-cycles");
+  const goal = stringFlag(args, "goal", "");
   const config: SupervisorConfig = {
     project,
-    goal: stringFlag(args, "goal", ""),
+    goal,
     maxCycles: explicitMaxCycles ?? (dryRun ? 1 : Number.POSITIVE_INFINITY),
     maxRetries: numberFlag(args, "max-retries", 10),
     networkTransientMaxRetries: numberFlag(args, "network-transient-max-retries", 10),
@@ -185,6 +186,7 @@ async function cmdRun(args: ParsedArgs): Promise<number> {
     dryRun,
     appServerOptions: appServerOptionsFromArgs(args),
     authManager: authManagerFromArgs(args),
+    goalMode: Boolean(goal.trim()),
     runId: sanitizeRunId(stringFlag(args, "run-id", "default")),
     supervisorConsole: !booleanFlag(args, "quiet-supercodex"),
   };

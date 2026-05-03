@@ -2,7 +2,7 @@
 
 这份指南面向实际使用，不是 `.supercodex` 内部交付记录。它只说明当前版本怎么安装、启动、续跑、切 session、切权限、处理交互请求和排查常见问题。
 
-当前版本：`0.13.2`（0.13 补丁版本）。许可证：MIT。
+当前版本：`0.13.4`（0.13 补丁版本）。许可证：MIT。
 
 ## 1. 先确认你装的是当前版本
 
@@ -62,7 +62,7 @@ cd C:\supercodex
 Remove-Item -Recurse -Force .\dist, .\node_modules
 ```
 
-目标项目中的运行状态位于 `.supercodex/`。只有在不再需要续跑状态、报告、checkpoint 或日志时再删除：
+目标项目中的运行状态位于 `.supercodex/`。只有在不再需要续跑状态、报告或日志时再删除：
 
 ```powershell
 Remove-Item -Recurse -Force .\.supercodex
@@ -77,7 +77,18 @@ cd C:\path\to\project
 supercodex
 ```
 
-启动后你会进入 OpenTUI 全屏界面。普通文本是普通指令。只有需要重置 `.supercodex` 并保存新的最终目标时，才使用 `/goal <prompt>`。已有 `.supercodex` 状态的项目，建议先用 `/status` 看当前状态，再用 `/start` 续跑。
+启动后你会进入 OpenTUI 全屏界面。普通文本是普通指令，会作为原始用户消息直接发送给 Codex。它不会创建 `FINAL_GOAL.md`，不会注入 SuperCodex External Supervisor Prompt，也不会运行 Phase 6 或 Phase 7。
+
+只有需要重置 `.supercodex`、保存新的最终目标，并进入完整的 SuperCodex PRD / 架构 / PLAN / 验收 / 交付循环时，才使用 `/goal <prompt>`。已有 `.supercodex` 状态的项目，建议先用 `/status` 看当前状态，再用 `/start` 续跑。
+
+### 普通输入和 `/goal` 的区别
+
+| 输入 | 行为 |
+|---|---|
+| 普通文本 | 当前或 fresh session 中的直接 Codex 消息。适合一次性工作、小修改、检查、审查。 |
+| `/goal <prompt>` | 明确的最终目标指令。重置 `.supercodex`，写入 `FINAL_GOAL.md`，在 `AUTO_DEV_STATE.json` 标记 goal mode，并注入 SuperCodex supervisor prompt。 |
+
+从命令面板选择 `/goal` 会把 `/goal ` 插入输入框；在后面输入最终目标并提交即可。
 
 ## 4. 最重要的 session 规则
 
@@ -148,6 +159,16 @@ active PLAN 内部的 Stage 或 phase 变化会复用同一个 Codex thread；Mi
 
 `/new` 会创建新的 SuperCodex run 和新的 Codex thread。`/clear` 是 `/new` 的别名。
 
+`/new <prompt>` 仍然是普通输入。它不会创建 `FINAL_GOAL.md`，也不会进入最终目标循环。
+
+### `/goal` 是最终目标循环入口
+
+```text
+/goal 把这个项目改造成可恢复、可测试、可发布的 CLI 工具，直到测试和构建通过。
+```
+
+`/goal <prompt>` 会清理当前项目过时的 `.supercodex` 状态，把 prompt 写入 `.supercodex/FINAL_GOAL.md`，在 `AUTO_DEV_STATE.json` 标记 goal mode，并启动 SuperCodex supervisor 工作流。
+
 ## 5. 推荐日常流程
 
 ### 新项目
@@ -157,13 +178,21 @@ cd C:\path\to\project
 supercodex
 ```
 
-进入 TUI 后输入最终目标，例如：
+如果是长期自动交付目标，进入 TUI 后使用 `/goal`：
 
 ```text
-把这个项目改造成可恢复、可测试、可发布的 CLI 工具，直到测试和构建通过。
+/goal 把这个项目改造成可恢复、可测试、可发布的 CLI 工具，直到测试和构建通过。
 ```
 
 SuperCodex 会补齐 `.supercodex/` 运行态，然后按项目状态推进。
+
+如果只是普通一次性任务，直接输入普通文本：
+
+```text
+检查 README 是否和当前实现一致。
+```
+
+这条消息会直接发送给 Codex，不会创建最终目标状态。
 
 ### 继续上次工作
 

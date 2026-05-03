@@ -2,7 +2,7 @@
 
 This guide is for day-to-day use. It is not an internal `.supercodex` delivery log. It describes how the current app-server/OpenTUI version is installed, started, resumed, configured, and verified.
 
-Current version: `0.13.2` (0.13 patch release). License: MIT.
+Current version: `0.13.4` (0.13 patch release). License: MIT.
 
 ## 1. Install the Current Version
 
@@ -62,7 +62,7 @@ cd C:\supercodex
 Remove-Item -Recurse -Force .\dist, .\node_modules
 ```
 
-Target-project runtime state lives in `.supercodex/`. Delete it only when you no longer need resume state, reports, checkpoints, or logs:
+Target-project runtime state lives in `.supercodex/`. Delete it only when you no longer need resume state, reports, or logs:
 
 ```powershell
 Remove-Item -Recurse -Force .\.supercodex
@@ -77,7 +77,18 @@ cd C:\path\to\project
 supercodex
 ```
 
-This starts the OpenTUI full-screen interface. Plain text is a normal instruction. Use `/goal <prompt>` only when you want to reset `.supercodex` and save a new final goal. For a project that already has `.supercodex` state, use `/status` first, then `/start` to continue saved work.
+This starts the OpenTUI full-screen interface. Plain text is a normal instruction sent to Codex as the raw user message. It does not create `FINAL_GOAL.md`, does not inject the SuperCodex External Supervisor Prompt, and does not run Phase 6 or Phase 7.
+
+Use `/goal <prompt>` only when you want to reset `.supercodex`, save a new final goal, and run the full SuperCodex PRD / architecture / PLAN / acceptance / delivery loop. For a project that already has `.supercodex` state, use `/status` first, then `/start` to continue saved work.
+
+### Plain Input vs `/goal`
+
+| Input | Behavior |
+|---|---|
+| Plain text | Direct Codex message in the current or fresh session. Good for one-off work, small edits, checks, and reviews. |
+| `/goal <prompt>` | Explicit final-goal command. Resets `.supercodex`, writes `FINAL_GOAL.md`, marks goal mode in `AUTO_DEV_STATE.json`, and injects the SuperCodex supervisor prompt. |
+
+Choosing `/goal` from the command palette inserts `/goal ` into the composer. Type the final goal after it and submit.
 
 ## 4. Session Rules
 
@@ -156,6 +167,16 @@ After `/resume`:
 
 `/new` creates a new SuperCodex run and a new Codex thread. `/clear` is an alias for `/new`.
 
+`/new <prompt>` is still plain input. It does not create `FINAL_GOAL.md` and does not enter the final-goal loop.
+
+### `/goal` Starts a Final-Goal Loop
+
+```text
+/goal Turn this project into a resumable, tested, releasable CLI tool and continue until build and tests pass.
+```
+
+`/goal <prompt>` clears stale project-local `.supercodex` state, stores the prompt in `.supercodex/FINAL_GOAL.md`, marks `AUTO_DEV_STATE.json` as goal mode, and starts the SuperCodex supervisor workflow.
+
 ## 5. Recommended Daily Flow
 
 ### New Project
@@ -165,13 +186,21 @@ cd C:\path\to\project
 supercodex
 ```
 
-Then type a final goal, for example:
+For a long-running autonomous delivery goal, use `/goal`:
 
 ```text
-Turn this project into a resumable, tested, releasable CLI tool and continue until build and tests pass.
+/goal Turn this project into a resumable, tested, releasable CLI tool and continue until build and tests pass.
 ```
 
 SuperCodex creates the required `.supercodex/` runtime state and continues from the project state.
+
+For a normal one-off task, type plain text instead:
+
+```text
+Check whether the README still matches the current implementation.
+```
+
+That message is sent directly to Codex and does not create final-goal state.
 
 ### Continue Previous Work
 

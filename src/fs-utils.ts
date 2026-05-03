@@ -135,13 +135,13 @@ export async function appendLogBestEffort(path: string, content: string, fallbac
   try {
     await appendLog(path, content);
   } catch (error) {
-    const fallback = `${fallbackRoot}/.supercodex/logs/supercodex/supercodex-warnings.md`;
+    const fallback = `${fallbackRoot}/.supercodex/logs/supercodex/warnings.log`;
     try {
       await appendLog(
         fallback,
-        `## ${nowIso()} - log-write-failed\n\n- target: ${path}\n- error: ${
+        `${nowIso()} log-write-failed\n- target: ${path}\n- error: ${
           (error as Error).message
-        }\n\nOriginal content:\n\n${content}\n`,
+        }\nOriginal content:\n${content}\n`,
       );
     } catch {
       // Logging must never block recovery.

@@ -42,8 +42,9 @@ const agentDirs = [
 
 const supercodexGitignoreRules = [".supercodex/"] as const;
 
-function autoDevStateTemplate(goal: string, timestamp: string, planTasks: PlanTask[] = []): JsonObject {
+function autoDevStateTemplate(goal: string, timestamp: string, planTasks: PlanTask[] = [], options: { goalMode?: boolean } = {}): JsonObject {
   const hasGoal = Boolean(goal.trim());
+  const goalMode = options.goalMode ?? hasGoal;
   const completedTaskIds = planTasks.filter((task) => task.status === "done").map((task) => task.id);
   const remainingTasks = planTasks.filter((task) => task.status !== "done");
   const firstRemainingTask = remainingTasks[0] ?? null;
@@ -54,6 +55,8 @@ function autoDevStateTemplate(goal: string, timestamp: string, planTasks: PlanTa
   const clarificationClosed = hasGoal || hasPlanProgress;
   return {
     schema_version: "1.0",
+    goal_mode: goalMode,
+    entry_mode: goalMode ? "GOAL" : "UNSET",
     cycle: 1,
     phase,
     decision: "IN_PROGRESS",
@@ -105,7 +108,7 @@ function autoDevStateTemplate(goal: string, timestamp: string, planTasks: PlanTa
   };
 }
 
-export async function ensureScaffold(projectInput: string, goal = ""): Promise<string[]> {
+export async function ensureScaffold(projectInput: string, goal = "", options: { goalMode?: boolean } = {}): Promise<string[]> {
   const project = resolve(projectInput);
   const created: string[] = [];
 
@@ -120,20 +123,6 @@ export async function ensureScaffold(projectInput: string, goal = ""): Promise<s
   for (const rel of agentDirs) {
     const path = join(project, rel);
     if (await ensureDir(path)) {
-      created.push(path);
-    }
-  }
-
-  const minimalFiles: Record<string, string> = {
-    ".supercodex/progress.md": "# Progress\n\n",
-    ".supercodex/checkpoints.md": "# Checkpoints\n\n",
-    ".supercodex/recovery.md": "# Recovery\n\n",
-    ".supercodex/last-error.md": "# Last Error\n\nNone.\n",
-    ".supercodex/last-action.md": "# Last Action\n\nBootstrap scaffold created.\n",
-  };
-  for (const [rel, content] of Object.entries(minimalFiles)) {
-    const path = join(project, rel);
-    if (await writeTextIfMissing(path, content)) {
       created.push(path);
     }
   }
@@ -157,7 +146,7 @@ export async function ensureScaffold(projectInput: string, goal = ""): Promise<s
   const statePath = join(project, ".supercodex", autoDevStateFile);
   if (!(await pathExists(statePath))) {
     const planTasks = shouldDeriveStateFromPlan ? parsePlanTasks(await readText(join(project, supercodexRoot, "PLAN.md"))) : [];
-    await writeJsonAtomic(statePath, autoDevStateTemplate(goal, timestamp, planTasks));
+    await writeJsonAtomic(statePath, autoDevStateTemplate(goal, timestamp, planTasks, options));
     created.push(statePath);
   }
 
@@ -172,7 +161,7 @@ export async function resetSupercodexGoalState(projectInput: string, goal: strin
     throw new Error(`Refusing to reset unsafe SuperCodex path: ${target}`);
   }
   await rm(target, { recursive: true, force: true });
-  return ensureScaffold(project, goal);
+  return ensureScaffold(project, goal, { goalMode: true });
 }
 
 export async function ensureSupervisorGitignore(project: string): Promise<boolean> {
@@ -211,7 +200,7 @@ export async function ensureSupercodexGitignore(project: string): Promise<boolea
 export async function loadSnapshot(projectInput: string): Promise<ProjectSnapshot> {
   const project = resolve(projectInput);
   await ensureSupercodexGitignore(project);
-  const autoDevState = await readJson<JsonObject>(join(project, ".supercodex", autoDevStateFile), {});
+  const autoDevState = withExplicitGoalModeDefaults(await readJson<JsonObject>(join(project, ".supercodex", autoDevStateFile), {}));
   const state = normalizeAutoDevState(autoDevState);
   const docsPresent: Record<string, boolean> = {};
   const missingDocs: string[] = [];
@@ -538,8 +527,8 @@ async function loadRecoverableSupervisorSession(project: string, runId?: string 
 
 export async function recordProgress(project: string, event: string, message: string): Promise<void> {
   await appendLogBestEffort(
-    join(project, ".supercodex", "progress.md"),
-    `## ${nowIso()} - ${event}\n\n${message}\n\n`,
+    join(project, ".supercodex", "logs", "supercodex", "progress.jsonl"),
+    `${JSON.stringify({ timestamp: nowIso(), event, message })}\n`,
     project,
   );
 }
@@ -558,17 +547,18 @@ export async function recordCheckpoint(
   },
 ): Promise<void> {
   await appendLogBestEffort(
-    join(project, ".supercodex", "checkpoints.md"),
-    `## Checkpoint: ${nowIso()}\n\n` +
-      `- 当前 mode：${input.mode}\n` +
-      `- 当前 phase：${input.phase}\n` +
-      `- 当前 Stage：${input.stageId ?? "none"}\n` +
-      `- 当前 Task：${input.taskId ?? "none"}\n` +
-      `- 已完成：${input.completed}\n` +
-      `- 下一步：${input.nextStep}\n` +
-      `- 最近命令：${input.lastCommand ?? "none"}\n` +
-      `- 最近风险：${input.risk}\n` +
-      "- 恢复方式：重新运行 `supercodex run --project <path>`，循环器会读取 .supercodex/AUTO_DEV_STATE.json 与轻量治理产物后继续。\n\n",
+    join(project, ".supercodex", "runtime", "checkpoints.jsonl"),
+    `${JSON.stringify({
+      timestamp: nowIso(),
+      mode: input.mode,
+      phase: input.phase,
+      stageId: input.stageId ?? null,
+      taskId: input.taskId ?? null,
+      completed: input.completed,
+      nextStep: input.nextStep,
+      lastCommand: input.lastCommand ?? null,
+      risk: input.risk,
+    })}\n`,
     project,
   );
 }
@@ -745,7 +735,7 @@ function projectAgentsTemplateCandidates(): string[] {
 function fallbackProjectAgentsTemplate(): string {
   return `# AGENTS.md - SuperCodex Project Instructions
 
-This project is managed by SuperCodex using the lightweight AGENTS.md governance protocol. Before doing work, Codex must read \`.supercodex/AUTO_DEV_STATE.json\`, \`.supercodex/PLAN.md\`, checkpoints, and git status, then continue from the recorded phase/task instead of restarting from scratch.
+This project is managed by SuperCodex using the lightweight AGENTS.md governance protocol. Before doing work, Codex must read \`.supercodex/AUTO_DEV_STATE.json\`, \`.supercodex/PLAN.md\`, runtime state, and git status, then continue from the recorded phase/task instead of restarting from scratch.
 
 Use available sub-agent, worker, explorer, tester, or reviewer capabilities when they materially help: independent exploration, disjoint implementation ownership, repeated failure analysis, parallel testing, code review, security review, or final-goal coverage review. Do not use them for tiny tasks or overlapping write scopes. The main agent remains responsible for integration, verification, and governance updates.
 
@@ -781,6 +771,16 @@ function normalizeAutoDevState(autoDevState: JsonObject): JsonObject {
     currentTaskId: stringOrNull(plan.current_task_id),
     phaseLocked: autoDevPhaseLocked(autoDevState),
     done: false,
+  };
+}
+
+function withExplicitGoalModeDefaults(autoDevState: JsonObject): JsonObject {
+  const entryMode = typeof autoDevState.entry_mode === "string" ? autoDevState.entry_mode.trim().toUpperCase() : "";
+  const goalMode = autoDevState.goal_mode === true || entryMode === "GOAL";
+  return {
+    ...autoDevState,
+    goal_mode: goalMode,
+    entry_mode: goalMode ? "GOAL" : entryMode || "UNSET",
   };
 }
 

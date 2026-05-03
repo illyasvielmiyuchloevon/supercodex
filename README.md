@@ -2,14 +2,14 @@
 
 SuperCodex is a TypeScript/Node.js supervisor for Codex CLI. It runs Codex through the official `codex app-server --listen stdio://` JSON-RPC interface, keeps project state under `.supercodex/`, and provides an OpenTUI/Solid terminal UI for long-running, resumable software delivery work.
 
-Current version: `0.13.2` (0.13 patch release).
+Current version: `0.13.4` (0.13 patch release).
 
 The current 0.13 version is app-server only. The old one-shot runner and hand-drawn raw TUI are no longer the formal path.
 
 ## What It Does
 
 - Starts and controls `codex app-server` with `initialize`, `thread/start` or `thread/resume`, then `turn/start`.
-- Persists project state, run state, session data, runtime data, logs, interactions, and checkpoints under `.supercodex/`.
+- Persists project state, run state, session data, runtime data, logs, and interactions under `.supercodex/`.
 - Uses an OpenTUI/Solid full-screen TUI with a transcript, status/sidebar metadata, slash commands, picker overlays, toasts, and a textarea composer.
 - Reconstructs the visible transcript from SuperCodex app-server logs and matching native Codex session JSONL files.
 - Keeps the main transcript compact: command output, file reads, and large tool output are summarized in the UI while raw logs stay on disk.
@@ -78,7 +78,7 @@ cd C:\supercodex
 Remove-Item -Recurse -Force .\dist, .\node_modules
 ```
 
-To remove SuperCodex state from a target project, delete that project's `.supercodex/` directory only after you no longer need its resume state, logs, reports, or checkpoints:
+To remove SuperCodex state from a target project, delete that project's `.supercodex/` directory only after you no longer need its resume state, logs, or reports:
 
 ```powershell
 Remove-Item -Recurse -Force .\.supercodex
@@ -95,7 +95,20 @@ supercodex
 
 `supercodex` without a subcommand starts managed TUI mode. Managed TUI mode is the normal interactive mode: type a request, use slash commands, inspect transcript/history, respond to Codex interactions, and resume saved work.
 
-Plain text sends a normal instruction into a session. Use `/goal <prompt>` when you explicitly want to reset `.supercodex` state and save the prompt as `.supercodex/FINAL_GOAL.md`.
+Plain text sends a normal instruction into a Codex session. It does not create `.supercodex/FINAL_GOAL.md`, does not inject the SuperCodex External Supervisor Prompt, and does not start the PRD / architecture / PLAN / Phase 6 / Phase 7 delivery loop.
+
+Use `/goal <prompt>` only when you explicitly want to reset `.supercodex` state, save the prompt as `.supercodex/FINAL_GOAL.md`, and run the full SuperCodex final-goal workflow.
+
+## Input Modes
+
+SuperCodex has two user-facing input modes:
+
+| Input | What happens | Use it for |
+|---|---|---|
+| Plain text | Sent to Codex as the raw user message in the current or fresh session. No final-goal state is created. | One-off questions, small edits, checks, reviews, and normal Codex work. |
+| `/goal <prompt>` | Resets `.supercodex`, writes `FINAL_GOAL.md`, marks `AUTO_DEV_STATE.json` as goal mode, and injects the SuperCodex External Supervisor Prompt for the delivery loop. | Long-running autonomous delivery where SuperCodex should keep planning, executing, reviewing, looping, and delivering until the final goal passes acceptance. |
+
+Selecting `/goal` from the command palette inserts `/goal ` into the input box; type the final goal after it and submit. A plain message in an empty session is still plain input, not a final goal.
 
 ## The Real `/start` Behavior
 
@@ -147,7 +160,9 @@ After `/resume`, type a normal message to continue that selected run, or use `/s
 
 - It clears stale `.supercodex` state for the project.
 - It writes the prompt to `.supercodex/FINAL_GOAL.md`.
+- It marks the run as goal mode in `.supercodex/AUTO_DEV_STATE.json`.
 - It starts the PRD / architecture / PLAN / Phase 6 / Phase 7 delivery loop.
+- It is the path that injects the SuperCodex External Supervisor Prompt.
 
 ## Common TUI Commands
 
@@ -266,14 +281,13 @@ Project-local runtime and recovery files:
   TRACEABILITY_MATRIX.md
   CODE_REVIEW_REPORT.md
   FINAL_ACCEPTANCE_REPORT.md
-  progress.md
-  checkpoints.md
-  last-action.md
   runtime/
     session.json
     runtime.json
+    checkpoints.jsonl
     runs/<run-id>/
   logs/
+    supercodex/progress.jsonl
 ```
 
 `.supercodex/` is runtime state and is ignored by git by default.

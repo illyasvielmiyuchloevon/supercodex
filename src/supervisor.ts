@@ -38,6 +38,7 @@ export interface SupervisorConfig {
   appServerOptions: AppServerOptions;
   authManager?: CodexAuthManager | null;
   operatorIntervention?: boolean;
+  goalMode?: boolean;
   skipScaffold?: boolean;
   resetSupercodexState?: boolean;
   runId?: string | null;
@@ -72,6 +73,7 @@ export function defaultSupervisorConfig(project: string): SupervisorConfig {
     appServerOptions: defaultAppServerOptions,
     authManager: null,
     operatorIntervention: false,
+    goalMode: false,
     skipScaffold: false,
     resetSupercodexState: false,
     runId: "default",
@@ -143,7 +145,7 @@ export class Supervisor {
     } else if (this.config.skipScaffold) {
       await ensureSupervisorGitignore(project);
     } else {
-      await ensureScaffold(project, this.config.goal);
+      await ensureScaffold(project, this.config.goal, { goalMode: Boolean(this.config.goalMode) });
     }
 
     let previousResult: CodexRunResult | null = null;
@@ -181,14 +183,16 @@ export class Supervisor {
       const resume = shouldResumeStoredThread(sessionState, forceFresh);
       const threadId = forceFresh ? null : storedThreadId;
 
-      const prompt = buildPrompt({
-        snapshot,
-        work,
-        previousResult,
-        forceFreshSession: forceFresh,
-        operatorMessage: pendingOperatorMessage,
-      });
       const currentOperatorMessage: string | null = pendingOperatorMessage;
+      const prompt = shouldSendRawOperatorPrompt(this.config, work, currentOperatorMessage)
+        ? currentOperatorMessage?.trim() ?? ""
+        : buildPrompt({
+            snapshot,
+            work,
+            previousResult,
+            forceFreshSession: forceFresh,
+            operatorMessage: currentOperatorMessage,
+          });
       pendingOperatorMessage = null;
 
       await recordProgress(
@@ -527,6 +531,10 @@ function operatorInterventionWork(previousWork: WorkItem): WorkItem {
         : `Operator supplied a runtime message while the selected work was '${previousWork.title}'; prioritize the user message instead of a synthetic final gate.`,
     source: "control",
   };
+}
+
+function shouldSendRawOperatorPrompt(config: SupervisorConfig, work: WorkItem, operatorMessage: string | null): boolean {
+  return work.kind === "operator_intervention" && Boolean(operatorMessage?.trim()) && Boolean(config.operatorIntervention) && Boolean(config.skipScaffold) && !Boolean(config.goalMode);
 }
 
 function operatorInterruptMessage(result: CodexRunResult): string | null {
