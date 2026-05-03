@@ -24,6 +24,9 @@ export const requiredDocs = [
 
 const supercodexRoot = ".supercodex";
 const autoDevStateFile = "AUTO_DEV_STATE.json";
+const phaseGoalPlanning = "PHASE_1_GOAL_PLANNING";
+const phaseDevelopmentQuality = "PHASE_2_DEVELOPMENT_QUALITY";
+const phaseAcceptanceDelivery = "PHASE_3_ACCEPTANCE_DELIVERY";
 
 const agentDirs = [
   ".supercodex/logs/terminal",
@@ -42,7 +45,7 @@ function autoDevStateTemplate(goal: string, timestamp: string, planTasks: PlanTa
   const goalMode = options.goalMode ?? hasGoal;
   const hasPlanProgress = planTasks.length > 0;
   const allPlanTasksDone = hasPlanProgress && planTasks.every((task) => task.status === "done");
-  const phase = hasPlanProgress && !allPlanTasksDone ? "PHASE_4_DEVELOPMENT" : allPlanTasksDone ? "PHASE_6_FINAL_ACCEPTANCE" : hasGoal ? "PHASE_1_PRD" : "PHASE_0_CLARIFICATION";
+  const phase = hasPlanProgress && !allPlanTasksDone ? phaseDevelopmentQuality : allPlanTasksDone ? phaseAcceptanceDelivery : phaseGoalPlanning;
   const clarificationClosed = hasGoal || hasPlanProgress;
   return {
     schema_version: "1.0",
@@ -54,6 +57,9 @@ function autoDevStateTemplate(goal: string, timestamp: string, planTasks: PlanTa
     clarification: {
       status: clarificationClosed ? "CLOSED" : "OPEN",
       asked_count: 0,
+    },
+    planning: {
+      current_step: hasPlanProgress ? "PLAN_READY" : hasGoal ? "PRD" : "CLARIFICATION",
     },
     acceptance: {
       decision: "PENDING",
@@ -218,7 +224,7 @@ export function parsePlanTasks(planText: string): PlanTask[] {
 
 export function chooseNextWork(snapshot: ProjectSnapshot): WorkItem {
   if (snapshot.done && autoDevStateDelivered(snapshot.autoDevState, snapshot.supervisorSession)) {
-    return { kind: "done", title: "Project delivered", reason: ".supercodex/AUTO_DEV_STATE.json decision is DELIVERED, final acceptance passed, and Phase 7 delivery is complete.", source: "auto-dev-state" };
+    return { kind: "done", title: "Project delivered", reason: ".supercodex/AUTO_DEV_STATE.json decision is DELIVERED, final acceptance passed, and Phase 3 delivery is complete.", source: "auto-dev-state" };
   }
   const criticalMissing = snapshot.missingDocs.filter((doc) => doc === autoDevStateFile || doc === "FINAL_GOAL.md" || doc === "PLAN.md");
   if (criticalMissing.length > 0) {
@@ -248,8 +254,8 @@ export function chooseNextWork(snapshot: ProjectSnapshot): WorkItem {
   if (snapshot.planTasks.length > 0) {
     return {
       kind: "stage_gate",
-      title: "进入 Phase 6 最终目标验收",
-      reason: "All parsed PLAN tasks are checked; AGENTS.md requires Phase 6 final acceptance before delivery.",
+      title: "进入 Phase 3 最终验收与交付",
+      reason: "All parsed PLAN tasks are checked; AGENTS.md requires Phase 3 final acceptance before delivery.",
       source: "final-acceptance",
     };
   }
@@ -266,7 +272,8 @@ function chooseFromAutoDevState(autoDevState: JsonObject, planTasks: PlanTask[],
     return null;
   }
 
-  const phase = stringValue(autoDevState.phase, "PHASE_0_CLARIFICATION");
+  const rawPhase = stringValue(autoDevState.phase, phaseGoalPlanning);
+  const phase = canonicalPhase(rawPhase);
   const decision = stringValue(autoDevState.decision, "IN_PROGRESS");
   const clarification = objectValue(autoDevState.clarification);
   const acceptance = objectValue(autoDevState.acceptance);
@@ -282,8 +289,8 @@ function chooseFromAutoDevState(autoDevState: JsonObject, planTasks: PlanTask[],
   if (claimsFinalAcceptanceDecision && !planReviewComplete && !hasOpenPlanWork) {
     return {
       kind: "stage_gate",
-      title: "进入 Phase 6 最终目标验收",
-      reason: "PLAN is exhausted, but this cycle has not completed a dedicated Phase 6 plan-review thread.",
+      title: "进入 Phase 3 最终验收与交付",
+      reason: "PLAN is exhausted, but this cycle has not completed a dedicated Phase 3 acceptance-review thread.",
       source: "final-acceptance",
     };
   }
@@ -300,7 +307,7 @@ function chooseFromAutoDevState(autoDevState: JsonObject, planTasks: PlanTask[],
   if ((decision === "PASS_READY_TO_DELIVER" || acceptancePassed(autoDevState)) && !hasOpenPlanWork) {
     return {
       kind: "stage_gate",
-      title: "执行 Phase 7 最终交付与 PR",
+      title: "执行 Phase 3 交付与 PR",
       reason: "Final acceptance passed; AGENTS.md requires Git delivery closure.",
       source: "auto-dev-state",
     };
@@ -318,85 +325,57 @@ function chooseFromAutoDevState(autoDevState: JsonObject, planTasks: PlanTask[],
   if (stringValue(clarification.status, "") === "WAITING_FOR_USER") {
     return {
       kind: "stage_gate",
-      title: "处理 Phase 0 需求澄清回复",
-      reason: "clarification.status is WAITING_FOR_USER; only Phase 0 may wait for or process a user clarification.",
+      title: "处理 Phase 1 需求澄清回复",
+      reason: "clarification.status is WAITING_FOR_USER; only the Phase 1 clarification step may wait for or process a user clarification.",
       source: "auto-dev-state",
     };
   }
 
-  if (phase === "PHASE_4_DEVELOPMENT") {
+  if (phase === phaseDevelopmentQuality) {
     if (hasOpenPlanWork || planTasks.length === 0) {
-      return continuePlanWork("AUTO_DEV_STATE phase is PHASE_4_DEVELOPMENT; Codex should read PLAN.md and continue the plan.", "auto-dev-state");
+      return continuePlanWork(`AUTO_DEV_STATE phase is ${rawPhase}; Codex should read PLAN.md and continue implementation, testing, review, and repair.`, "auto-dev-state");
     }
     return {
       kind: "stage_gate",
-      title: "进入 Phase 6 最终目标验收",
-      reason: "PLAN checklist is exhausted; AGENTS.md requires Phase 6 final acceptance before delivery.",
+      title: "进入 Phase 3 最终验收与交付",
+      reason: "PLAN checklist is exhausted; AGENTS.md requires Phase 3 final acceptance before delivery.",
       source: "final-acceptance",
     };
   }
 
-  return phaseWork(phase);
+  return phaseWork(phase, rawPhase);
 }
 
 function continuePlanWork(reason: string, source: string): WorkItem {
   return {
     kind: "stage_gate",
-    title: "继续 Phase 4 自动开发执行",
+    title: "继续 Phase 2 自动开发、测试、审查与修复",
     reason,
     source,
   };
 }
 
-function phaseWork(phase: string): WorkItem | null {
+function phaseWork(phase: string, rawPhase = phase): WorkItem | null {
   switch (phase) {
-    case "PHASE_0_CLARIFICATION":
+    case phaseGoalPlanning:
       return {
         kind: "stage_gate",
-        title: "Phase 0 需求澄清与目标锁定",
-        reason: "AUTO_DEV_STATE phase is PHASE_0_CLARIFICATION.",
+        title: "Phase 1 目标锁定、PRD、架构与 Plan",
+        reason: `AUTO_DEV_STATE phase is ${rawPhase}.`,
         source: "auto-dev-state",
       };
-    case "PHASE_1_PRD":
+    case phaseDevelopmentQuality:
       return {
         kind: "stage_gate",
-        title: "Phase 1 编写或更新 PRD",
-        reason: "AUTO_DEV_STATE phase is PHASE_1_PRD.",
+        title: "Phase 2 自动开发、测试、审查与修复",
+        reason: `AUTO_DEV_STATE phase is ${rawPhase}.`,
         source: "auto-dev-state",
       };
-    case "PHASE_2_ARCHITECTURE":
+    case phaseAcceptanceDelivery:
       return {
         kind: "stage_gate",
-        title: "Phase 2 编写或更新架构设计",
-        reason: "AUTO_DEV_STATE phase is PHASE_2_ARCHITECTURE.",
-        source: "auto-dev-state",
-      };
-    case "PHASE_3_PLAN":
-      return {
-        kind: "stage_gate",
-        title: "Phase 3 制定或更新 Plan 与覆盖状态",
-        reason: "AUTO_DEV_STATE phase is PHASE_3_PLAN.",
-        source: "auto-dev-state",
-      };
-    case "PHASE_5_TEST_REVIEW_REPAIR":
-      return {
-        kind: "stage_gate",
-        title: "Phase 5 测试、审查与修复",
-        reason: "AUTO_DEV_STATE phase is PHASE_5_TEST_REVIEW_REPAIR.",
-        source: "auto-dev-state",
-      };
-    case "PHASE_6_FINAL_ACCEPTANCE":
-      return {
-        kind: "stage_gate",
-        title: "Phase 6 最终目标验收",
-        reason: "AUTO_DEV_STATE phase is PHASE_6_FINAL_ACCEPTANCE.",
-        source: "auto-dev-state",
-      };
-    case "PHASE_7_DELIVERY_PR":
-      return {
-        kind: "stage_gate",
-        title: "Phase 7 最终交付与 PR",
-        reason: "AUTO_DEV_STATE phase is PHASE_7_DELIVERY_PR.",
+        title: "Phase 3 最终验收、交付与 PR",
+        reason: `AUTO_DEV_STATE phase is ${rawPhase}.`,
         source: "auto-dev-state",
       };
     default:
@@ -544,7 +523,7 @@ function requiredFileStub(doc: string, goal: string): string {
 ${goal || "Not provided yet."}
 
 ## 最终澄清后的目标
-- 待 Phase 0 根据用户原始目标、澄清回答和合理假设补全。
+- 待 Phase 1 的需求澄清子步骤根据用户原始目标、澄清回答和合理假设补全。
 
 ## 澄清记录与回答
 - 暂无。
@@ -638,14 +617,15 @@ Required durable files:
 
 \`.supercodex/AUTO_DEV_STATE.json\` is the machine-readable scheduling source. \`.supercodex/FINAL_GOAL.md\` stores the original user input, final clarified goal, clarification answers, and assumptions. Markdown files are FINAL_GOAL, PRD, ARCHITECTURE, and PLAN. SuperCodex may record runtime logs automatically.
 
-Phase 0 handles blocking clarification questions. After Phase 0, fix errors autonomously, keep AUTO_DEV_STATE valid JSON through atomic writes, and deliver after AUTO_DEV_STATE.acceptance.decision says PASS and Phase 7 delivery is complete.
+Phase 1 contains blocking clarification, PRD, architecture, and PLAN creation. After the Phase 1 clarification step is closed, fix errors autonomously, keep AUTO_DEV_STATE valid JSON through atomic writes, and deliver after AUTO_DEV_STATE.acceptance.decision says PASS and Phase 3 delivery is complete.
 
-\`.supercodex/PLAN.md\` is Codex's execution plan and progress record. AUTO_DEV_STATE remains the Phase-level scheduling state. When the PLAN is exhausted, SuperCodex must run the full-project Phase 6 final acceptance before Phase 7.
+\`.supercodex/PLAN.md\` is Codex's execution plan and progress record. AUTO_DEV_STATE remains the Phase-level scheduling state. When the PLAN is exhausted, SuperCodex must run the full-project Phase 3 final acceptance before delivery.
 `;
 }
 
 function normalizeAutoDevState(autoDevState: JsonObject): JsonObject {
-  const phase = stringValue(autoDevState.phase, "PHASE_0_CLARIFICATION");
+  const rawPhase = stringValue(autoDevState.phase, phaseGoalPlanning);
+  const phase = canonicalPhase(rawPhase);
   return {
     ...autoDevState,
     mode: modeFromPhase(phase),
@@ -665,9 +645,13 @@ function withExplicitGoalModeDefaults(autoDevState: JsonObject): JsonObject {
 }
 
 function autoDevPhaseLocked(autoDevState: JsonObject): boolean {
-  const phase = stringValue(autoDevState.phase, "PHASE_0_CLARIFICATION");
+  const rawPhase = stringValue(autoDevState.phase, phaseGoalPlanning);
+  const phase = canonicalPhase(rawPhase);
   const clarification = objectValue(autoDevState.clarification);
-  return phase !== "PHASE_0_CLARIFICATION" || stringValue(clarification.status, "") === "CLOSED";
+  if (rawPhase !== phaseGoalPlanning && rawPhase !== "PHASE_0_CLARIFICATION") {
+    return true;
+  }
+  return phase !== phaseGoalPlanning || stringValue(clarification.status, "") === "CLOSED";
 }
 
 function autoDevStateDelivered(autoDevState: JsonObject, supervisorSession: JsonObject): boolean {
@@ -716,21 +700,34 @@ function acceptanceFailed(autoDevState: JsonObject): boolean {
 }
 
 function modeFromPhase(phase: string): string {
-  switch (phase) {
-    case "PHASE_0_CLARIFICATION":
-      return "clarification";
-    case "PHASE_1_PRD":
-    case "PHASE_2_ARCHITECTURE":
-    case "PHASE_3_PLAN":
+  switch (canonicalPhase(phase)) {
+    case phaseGoalPlanning:
       return "planning";
-    case "PHASE_5_TEST_REVIEW_REPAIR":
-      return "repair";
-    case "PHASE_6_FINAL_ACCEPTANCE":
-      return "review";
-    case "PHASE_7_DELIVERY_PR":
+    case phaseAcceptanceDelivery:
       return "delivery";
     default:
       return "execution";
+  }
+}
+
+function canonicalPhase(phase: string): string {
+  switch (phase) {
+    case "PHASE_0_CLARIFICATION":
+    case "PHASE_1_PRD":
+    case "PHASE_2_ARCHITECTURE":
+    case "PHASE_3_PLAN":
+    case phaseGoalPlanning:
+      return phaseGoalPlanning;
+    case "PHASE_4_DEVELOPMENT":
+    case "PHASE_5_TEST_REVIEW_REPAIR":
+    case phaseDevelopmentQuality:
+      return phaseDevelopmentQuality;
+    case "PHASE_6_FINAL_ACCEPTANCE":
+    case "PHASE_7_DELIVERY_PR":
+    case phaseAcceptanceDelivery:
+      return phaseAcceptanceDelivery;
+    default:
+      return phase;
   }
 }
 

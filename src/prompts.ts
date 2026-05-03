@@ -40,7 +40,7 @@ Apply the intervention directly. Ordinary operator messages stay inside the acti
     work.kind === "operator_intervention"
       ? goalMode
         ? "Handle the runtime operator message as the actual work item inside the active goal-mode delivery loop. Preserve FINAL_GOAL as the root source of truth, update PRD / ARCHITECTURE / PLAN when the operator instruction changes or repairs that goal loop, and sync AUTO_DEV_STATE when phase or decision changes."
-        : "Handle the runtime operator message as the actual work item. Do concise requirement analysis, inspect the repository, implement, test, and report the result. Existing final-goal state keeps its Phase 6 / Phase 7 loop; ordinary requests remain ordinary work."
+        : "Handle the runtime operator message as the actual work item. Do concise requirement analysis, inspect the repository, implement, test, and report the result. Existing final-goal state keeps its Phase 3 acceptance/delivery loop; ordinary requests remain ordinary work."
       : goalMode
         ? "Execute this work item end to end if feasible in this turn. Keep changes scoped to the current phase, gate, or required acceptance-driven revision. Update FINAL_GOAL, PRD, ARCHITECTURE, and PLAN when the work requires semantic or planning updates. Sync AUTO_DEV_STATE when phase or decision changes. If the work item is `supplement_docs`, create missing required docs and preserve existing PRD/PLAN wording while FINAL_GOAL coverage, tests, review, and final acceptance guide corrections."
         : "Execute this non-goal work item end to end if feasible in this turn. Do concise requirement analysis, inspect the repository, implement, test, and report the result.";
@@ -50,7 +50,7 @@ Apply the intervention directly. Ordinary operator messages stay inside the acti
 3. Read \`.supercodex/FINAL_GOAL.md\`, \`.supercodex/PRD.md\`, \`.supercodex/ARCHITECTURE.md\`, and \`.supercodex/PLAN.md\` if present.
 4. Check git status before edits.
 5. Resume from AUTO_DEV_STATE phase and decision, then read PLAN.md yourself to continue the plan.
-6. PLAN exhaustion leads to full-project Phase 6 review against FINAL_GOAL; record the result in AUTO_DEV_STATE.acceptance.decision.
+6. PLAN exhaustion leads to full-project Phase 3 review against FINAL_GOAL and delivery readiness; record the result in AUTO_DEV_STATE.acceptance.decision.
 
 ## Existing Project Continuity and State Rule
 If this project already has \`.supercodex\`, \`.supercodex/PRD.md\`, \`.supercodex/PLAN.md\`, or \`.supercodex/AUTO_DEV_STATE.json\`, preserve the existing durable state and continue from it by default. Supplement missing required docs first and continue the existing PLAN when it still covers FINAL_GOAL.
@@ -63,7 +63,7 @@ FINAL_GOAL is more authoritative than PRD and PLAN. If PRD, architecture, PLAN, 
     goalMode
       ? work.kind === "operator_intervention"
         ? "Because this run is in goal mode, keep the final-goal delivery loop intact: after planned goal work is checked off, run Final Acceptance before marking delivery done."
-        : "After all planned work is checked off, run Final Acceptance before marking delivery done. If acceptance fails, set AUTO_DEV_STATE decision to FAIL_CONTINUE_NEXT_CYCLE, revise FINAL_GOAL / PRD / ARCHITECTURE / PLAN as needed, and continue the loop. Phase 6 is the authority for final completion and next-cycle decisions."
+        : "After all planned work is checked off, run Final Acceptance before marking delivery done. If acceptance fails, set AUTO_DEV_STATE decision to FAIL_CONTINUE_NEXT_CYCLE, revise FINAL_GOAL / PRD / ARCHITECTURE / PLAN as needed, and continue the loop. Phase 3 is the authority for final completion, delivery, and next-cycle decisions."
       : "For non-goal work, finish the requested work, test what changed, and stop with a clear result.";
 
   return `# External Supervisor Prompt
@@ -80,8 +80,8 @@ Give each sub-agent a concrete role, scope, file/module ownership, expected outp
 ## Session Policy
 - SuperCodex controls Codex through app-server threads and turns, not through the legacy non-interactive runner.
 - Keep the whole active PLAN in one Codex thread.
-- Start a fresh normal-work thread at PLAN exhaustion when the next work is full-project Final Acceptance / PRD / Architecture / PLAN review for the next cycle.
-- Phase 7 or final done requires the current Cycle Phase 6 review to succeed.
+- Start a fresh normal-work thread at PLAN exhaustion when the next work is full-project Phase 3 Final Acceptance / PRD / Architecture / PLAN review for the next cycle.
+- Final done requires the current Cycle Phase 3 review and delivery closure to succeed.
 - Explicit operator \`/fresh-next\` requests and hard runtime recovery may still start a fresh thread.
 - Context compaction failure and network interruption are not user blockers. Recover from persistent state and continue.
 ${freshBlock}
@@ -100,7 +100,7 @@ ${completionContract}
 
 Inside PLAN, Stage, Task, and Milestone are planning structure for Codex to read and follow. PLAN completion in a final-goal run leads to the full-project Final Acceptance review thread.
 
-After Phase 0, continue autonomously. If an external credential, network, or remote Git permission is unavailable, continue with local substitutes where possible.
+After the Phase 1 clarification step closes, continue autonomously. If an external credential, network, or remote Git permission is unavailable, continue with local substitutes where possible.
 ${previousBlock}
 `;
 }

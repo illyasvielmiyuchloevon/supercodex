@@ -77,7 +77,7 @@ cd C:\path\to\project
 supercodex
 ```
 
-This starts the OpenTUI full-screen interface. Plain text is a normal instruction sent to Codex as the raw user message. It does not create `FINAL_GOAL.md`, does not inject the SuperCodex External Supervisor Prompt, and does not run Phase 6 or Phase 7.
+This starts the OpenTUI full-screen interface. Plain text is a normal instruction sent to Codex as the raw user message. It does not create `FINAL_GOAL.md`, does not inject the SuperCodex External Supervisor Prompt, and does not run the Phase 3 acceptance-delivery loop.
 
 Use `/goal <prompt>` only when you want to reset `.supercodex`, save a new final goal, and run the full SuperCodex PRD / architecture / PLAN / acceptance / delivery loop. For a project that already has `.supercodex` state, use `/status` first, then `/start` to continue saved work.
 
@@ -132,10 +132,10 @@ These cases can start a fresh Codex thread inside the same SuperCodex run:
 - The previous turn was a dry run.
 - The previous failure is not recoverable.
 - `/fresh-next` was requested.
-- The active PLAN is exhausted and the next work is full-project Final Acceptance / PRD / Architecture / PLAN review for the next cycle.
+- The active PLAN is exhausted and the next work is Phase 3 full-project Final Acceptance / PRD / Architecture / PLAN review for the next cycle.
 - The same thread failed repeatedly.
 
-Stage or phase changes inside the active PLAN reuse the same Codex thread. Milestone completion may create an intermediate commit/push, but it still stays in the same plan-cycle thread and does not replace the Phase 7 final PR closure. The fresh-thread boundary is the PLAN-completion review, not a stage gate. It is not the same as losing the SuperCodex session.
+Stage or phase changes inside the active PLAN reuse the same Codex thread. Milestone completion may create an intermediate commit/push, but it still stays in the same plan-cycle thread and does not replace the Phase 3 acceptance-delivery closure. The fresh-thread boundary is the PLAN-completion review, not a stage gate. It is not the same as losing the SuperCodex session.
 
 `--max-retries` does not stop ordinary recoverable failures. For ordinary recoverable app-server failures, it is the threshold for escalating recovery to a fresh Codex thread, default 10. Non-recoverable failures can still stop after the retry threshold.
 

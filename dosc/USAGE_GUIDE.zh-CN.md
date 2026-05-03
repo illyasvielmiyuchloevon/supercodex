@@ -77,7 +77,7 @@ cd C:\path\to\project
 supercodex
 ```
 
-启动后你会进入 OpenTUI 全屏界面。普通文本是普通指令，会作为原始用户消息直接发送给 Codex。它不会创建 `FINAL_GOAL.md`，不会注入 SuperCodex External Supervisor Prompt，也不会运行 Phase 6 或 Phase 7。
+启动后你会进入 OpenTUI 全屏界面。普通文本是普通指令，会作为原始用户消息直接发送给 Codex。它不会创建 `FINAL_GOAL.md`，不会注入 SuperCodex External Supervisor Prompt，也不会运行 Phase 3 验收交付循环。
 
 只有需要重置 `.supercodex`、保存新的最终目标，并进入完整的 SuperCodex PRD / 架构 / PLAN / 验收 / 交付循环时，才使用 `/goal <prompt>`。已有 `.supercodex` 状态的项目，建议先用 `/status` 看当前状态，再用 `/start` 续跑。
 
@@ -126,10 +126,10 @@ supercodex
 - 上次是 dry-run。
 - 上次失败类型不可恢复。
 - 你执行过 `/fresh-next`。
-- 当前 PLAN 已全部完成，下一步是全项目 Final Acceptance / PRD / Architecture / PLAN 审查，并在需要时创建下一 Cycle。
+- 当前 PLAN 已全部完成，下一步是 Phase 3 全项目 Final Acceptance / PRD / Architecture / PLAN 审查，并在需要时创建下一 Cycle。
 - 同一个 thread 连续失败次数达到限制。
 
-active PLAN 内部的 Stage 或 phase 变化会复用同一个 Codex thread；Milestone 完成可以创建阶段性 commit/push，但仍然留在同一个 plan-cycle thread，也不能替代 Phase 7 的最终 PR 闭环。fresh thread 的正常边界是 PLAN 完成后的全局审查，而不是 Stage Gate。这不是 session 丢失。
+active PLAN 内部的 Stage 或 phase 变化会复用同一个 Codex thread；Milestone 完成可以创建阶段性 commit/push，但仍然留在同一个 plan-cycle thread，也不能替代 Phase 3 的验收交付闭环。fresh thread 的正常边界是 PLAN 完成后的全局审查，而不是 Stage Gate。这不是 session 丢失。
 
 `--max-retries` 不再表示普通可恢复错误失败几次就停。对上下文窗口错误等普通可恢复 app-server 错误，它表示达到阈值后升级恢复策略，默认 10 次，强制 fresh Codex thread 并继续运行；只有不可恢复错误才会按这个阈值停止。
 

@@ -37,7 +37,7 @@ test("ensureScaffold includes lightweight AGENTS.md required files", async () =>
   const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as { schema_version?: string; goal_mode?: boolean; phase?: string; clarification?: { status?: string } };
   assert.equal(state.schema_version, "1.0");
   assert.equal(state.goal_mode, true);
-  assert.equal(state.phase, "PHASE_1_PRD");
+  assert.equal(state.phase, "PHASE_1_GOAL_PLANNING");
   assert.equal(state.clarification?.status, "CLOSED");
   for (const legacyDoc of ["progress.md", "checkpoints.md", "recovery.md", "last-error.md", "last-action.md"]) {
     await assert.rejects(readFile(join(project, ".supercodex", legacyDoc), "utf8"));
@@ -57,7 +57,7 @@ test("/goal reset removes stale SuperCodex state and writes the new FINAL_GOAL",
   assert.match(await readFile(join(project, ".supercodex", "FINAL_GOAL.md"), "utf8"), /build the full product/);
   const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as { goal_mode?: boolean; phase?: string };
   assert.equal(state.goal_mode, true);
-  assert.equal(state.phase, "PHASE_1_PRD");
+  assert.equal(state.phase, "PHASE_1_GOAL_PLANNING");
 });
 
 test("ensureScaffold without an explicit goal does not activate goal mode", async () => {
@@ -67,7 +67,7 @@ test("ensureScaffold without an explicit goal does not activate goal mode", asyn
 
   const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as { goal_mode?: boolean; phase?: string };
   assert.equal(state.goal_mode, false);
-  assert.equal(state.phase, "PHASE_0_CLARIFICATION");
+  assert.equal(state.phase, "PHASE_1_GOAL_PLANNING");
   const snapshot = await loadSnapshot(project);
   assert.equal(snapshot.autoDevState.goal_mode, false);
 });
@@ -85,6 +85,7 @@ test("loadSnapshot does not infer goal mode from FINAL_GOAL without an explicit 
   const snapshot = await loadSnapshot(project);
 
   assert.equal(snapshot.autoDevState.goal_mode, false);
+  assert.equal(snapshot.state.phase, "PHASE_2_DEVELOPMENT_QUALITY");
 });
 
 test("ensureScaffold creates project AGENTS.md once and preserves existing project guidance", async () => {
@@ -141,12 +142,12 @@ test("ensureScaffold ignores legacy .supercodex/docs state and starts new AUTO_D
   const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as {
     phase?: string;
   };
-  assert.equal(state.phase, "PHASE_1_PRD");
+  assert.equal(state.phase, "PHASE_1_GOAL_PLANNING");
 
   const snapshot = await loadSnapshot(project);
   const work = chooseNextWork(snapshot);
   assert.equal(work.kind, "stage_gate");
-  assert.equal(work.title, "Phase 1 编写或更新 PRD");
+  assert.equal(work.title, "Phase 1 目标锁定、PRD、架构与 Plan");
   assert.equal(work.source, "auto-dev-state");
 });
 
@@ -160,7 +161,7 @@ test("ensureScaffold derives AUTO_DEV_STATE from existing lightweight PLAN only"
   const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as {
     phase?: string;
   };
-  assert.equal(state.phase, "PHASE_6_FINAL_ACCEPTANCE");
+  assert.equal(state.phase, "PHASE_3_ACCEPTANCE_DELIVERY");
 });
 
 test("parsePlanTasks and chooseNextWork continue PLAN without task-level dispatch", async () => {
@@ -186,7 +187,7 @@ test("parsePlanTasks and chooseNextWork continue PLAN without task-level dispatc
     phaseLocked: true,
   });
   assert.equal(work.kind, "stage_gate");
-  assert.equal(work.title, "继续 Phase 4 自动开发执行");
+  assert.equal(work.title, "继续 Phase 2 自动开发、测试、审查与修复");
   assert.equal(work.stageId, undefined);
   assert.equal(work.taskId, undefined);
 });
@@ -215,12 +216,12 @@ test("chooseNextWork ignores legacy AUTO_DEV_STATE task ids and lets Codex read 
   });
 
   assert.equal(next.kind, "stage_gate");
-  assert.equal(next.title, "继续 Phase 4 自动开发执行");
+  assert.equal(next.title, "继续 Phase 2 自动开发、测试、审查与修复");
   assert.equal(next.taskId, undefined);
   assert.equal(next.stageId, undefined);
 });
 
-test("chooseNextWork enters Phase 6 when PLAN is exhausted even if AUTO_DEV_STATE still points at execution", () => {
+test("chooseNextWork enters Phase 3 when PLAN is exhausted even if AUTO_DEV_STATE still points at execution", () => {
   const done = chooseNextWork({
     project: ".",
     state: {},
@@ -241,7 +242,7 @@ test("chooseNextWork enters Phase 6 when PLAN is exhausted even if AUTO_DEV_STAT
   assert.equal(done.source, "final-acceptance");
 });
 
-test("chooseNextWork requires a Phase 6 plan-review marker before delivery can stop", () => {
+test("chooseNextWork requires a Phase 3 plan-review marker before delivery can stop", () => {
   const base = {
     project: ".",
     missingDocs: [],
@@ -281,7 +282,7 @@ test("chooseNextWork requires a Phase 6 plan-review marker before delivery can s
   assert.equal(complete.kind, "done");
 });
 
-test("chooseNextWork maps final acceptance pass and fail decisions to Phase 7 or next cycle", () => {
+test("chooseNextWork maps final acceptance pass and fail decisions to Phase 3 delivery or next cycle", () => {
   const base = {
     project: ".",
     state: {},
@@ -295,14 +296,14 @@ test("chooseNextWork maps final acceptance pass and fail decisions to Phase 7 or
 
   const passWork = chooseNextWork({
     ...base,
-    autoDevState: { phase: "PHASE_6_FINAL_ACCEPTANCE", decision: "PASS_READY_TO_DELIVER", acceptance: { decision: "PASS" } },
+    autoDevState: { phase: "PHASE_3_ACCEPTANCE_DELIVERY", decision: "PASS_READY_TO_DELIVER", acceptance: { decision: "PASS" } },
   });
   assert.equal(passWork.kind, "stage_gate");
-  assert.equal(passWork.title, "执行 Phase 7 最终交付与 PR");
+  assert.equal(passWork.title, "执行 Phase 3 交付与 PR");
 
   const failWork = chooseNextWork({
     ...base,
-    autoDevState: { phase: "PHASE_6_FINAL_ACCEPTANCE", decision: "FAIL_CONTINUE_NEXT_CYCLE", acceptance: { decision: "FAIL" } },
+    autoDevState: { phase: "PHASE_3_ACCEPTANCE_DELIVERY", decision: "FAIL_CONTINUE_NEXT_CYCLE", acceptance: { decision: "FAIL" } },
   });
   assert.equal(failWork.kind, "stage_gate");
   assert.equal(failWork.title, "根据最终验收失败创建下一 Cycle");
@@ -310,14 +311,14 @@ test("chooseNextWork maps final acceptance pass and fail decisions to Phase 7 or
   const failWithoutReview = chooseNextWork({
     ...base,
     supervisorSession: {},
-    autoDevState: { cycle: 1, phase: "PHASE_6_FINAL_ACCEPTANCE", decision: "FAIL_CONTINUE_NEXT_CYCLE", acceptance: { decision: "FAIL" } },
+    autoDevState: { cycle: 1, phase: "PHASE_3_ACCEPTANCE_DELIVERY", decision: "FAIL_CONTINUE_NEXT_CYCLE", acceptance: { decision: "FAIL" } },
   });
   assert.equal(failWithoutReview.kind, "stage_gate");
   assert.equal(failWithoutReview.source, "final-acceptance");
-  assert.equal(failWithoutReview.title, "进入 Phase 6 最终目标验收");
+  assert.equal(failWithoutReview.title, "进入 Phase 3 最终验收与交付");
 });
 
-test("loadSnapshot marks delivered only after Phase 7 delivery closure", async () => {
+test("loadSnapshot marks delivered only after Phase 3 delivery closure", async () => {
   const project = await mkdtemp(join(tmpdir(), "supercodex-delivery-"));
   await mkdir(join(project, ".supercodex"), { recursive: true });
   for (const doc of ["FINAL_GOAL.md", "PRD.md", "ARCHITECTURE.md", "PLAN.md"]) {
@@ -326,7 +327,7 @@ test("loadSnapshot marks delivered only after Phase 7 delivery closure", async (
 
   const state = {
     schema_version: "1.0",
-    phase: "PHASE_7_DELIVERY_PR",
+    phase: "PHASE_3_ACCEPTANCE_DELIVERY",
     decision: "DELIVERED",
     clarification: { status: "CLOSED" },
     acceptance: { decision: "PASS" },

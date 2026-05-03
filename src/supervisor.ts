@@ -583,7 +583,9 @@ function isPlanReviewWork(work: WorkItem): boolean {
   return (
     work.source === "final-acceptance" ||
     work.title.includes("最终目标验收") ||
+    work.title.includes("最终验收") ||
     work.reason.includes("RUN_FINAL_ACCEPTANCE") ||
+    work.reason.includes("PHASE_3_ACCEPTANCE_DELIVERY") ||
     work.reason.includes("PHASE_6_FINAL_ACCEPTANCE")
   );
 }

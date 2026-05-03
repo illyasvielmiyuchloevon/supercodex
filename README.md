@@ -95,7 +95,7 @@ supercodex
 
 `supercodex` without a subcommand starts managed TUI mode. Managed TUI mode is the normal interactive mode: type a request, use slash commands, inspect transcript/history, respond to Codex interactions, and resume saved work.
 
-Plain text sends a normal instruction into a Codex session. It does not create `.supercodex/FINAL_GOAL.md`, does not inject the SuperCodex External Supervisor Prompt, and does not start the PRD / architecture / PLAN / Phase 6 / Phase 7 delivery loop.
+Plain text sends a normal instruction into a Codex session. It does not create `.supercodex/FINAL_GOAL.md`, does not inject the SuperCodex External Supervisor Prompt, and does not start the Phase 1 planning / Phase 2 development-quality / Phase 3 acceptance-delivery loop.
 
 Use `/goal <prompt>` only when you explicitly want to reset `.supercodex` state, save the prompt as `.supercodex/FINAL_GOAL.md`, and run the full SuperCodex final-goal workflow.
 
@@ -133,11 +133,11 @@ There are intentional exceptions at the Codex thread level:
 
 - If there is no saved thread, Codex must start a new thread.
 - If `/fresh-next` was requested, the next cycle starts a fresh thread.
-- When the active PLAN is exhausted, SuperCodex starts a fresh thread for full-project Final Acceptance / PRD / Architecture / PLAN review and next-cycle planning if needed.
+- When the active PLAN is exhausted, SuperCodex starts a fresh thread for Phase 3 full-project Final Acceptance / PRD / Architecture / PLAN review and next-cycle planning if needed.
 - If repeated same-session failures cross the configured limit, SuperCodex starts fresh.
 - If the previous session was a dry run or a non-recoverable failure, it is not reused.
 
-Stage or phase changes inside the active PLAN do not start a fresh Codex thread. Milestone completion may create an intermediate commit/push, but it still stays in the same plan-cycle thread and does not replace the Phase 7 final PR closure. This distinction matters: `/start` does not create a new SuperCodex run, but it may intentionally start a new Codex thread inside that run when recovery would be unsafe or when the PLAN-completion review boundary is reached.
+Stage or phase changes inside the active PLAN do not start a fresh Codex thread. Milestone completion may create an intermediate commit/push, but it still stays in the same plan-cycle thread and does not replace the Phase 3 acceptance-delivery closure. This distinction matters: `/start` does not create a new SuperCodex run, but it may intentionally start a new Codex thread inside that run when recovery would be unsafe or when the PLAN-completion review boundary is reached.
 
 ## `/resume` and `/new`
 
@@ -161,7 +161,7 @@ After `/resume`, type a normal message to continue that selected run, or use `/s
 - It clears stale `.supercodex` state for the project.
 - It writes the prompt to `.supercodex/FINAL_GOAL.md`.
 - It marks the run as goal mode in `.supercodex/AUTO_DEV_STATE.json`.
-- It starts the PRD / architecture / PLAN / Phase 6 / Phase 7 delivery loop.
+- It starts the Phase 1 planning / Phase 2 development-quality / Phase 3 acceptance-delivery loop.
 - It is the path that injects the SuperCodex External Supervisor Prompt.
 
 ## Common TUI Commands

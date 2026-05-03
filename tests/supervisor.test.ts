@@ -458,7 +458,7 @@ async function writeProjectState(project: string): Promise<void> {
     JSON.stringify({
       schema_version: "1.0",
       cycle: 1,
-      phase: "PHASE_4_DEVELOPMENT",
+      phase: "PHASE_2_DEVELOPMENT_QUALITY",
       decision: "IN_PROGRESS",
       clarification: { status: "CLOSED", asked_count: 0 },
       acceptance: { decision: "PENDING" },
@@ -481,7 +481,7 @@ async function writePlanCompleteProjectState(project: string): Promise<void> {
     JSON.stringify({
       schema_version: "1.0",
       cycle: 1,
-      phase: "PHASE_6_FINAL_ACCEPTANCE",
+      phase: "PHASE_3_ACCEPTANCE_DELIVERY",
       decision: "IN_PROGRESS",
       clarification: { status: "CLOSED", asked_count: 0 },
       acceptance: { decision: "PENDING" },
@@ -506,7 +506,7 @@ async function writeDoneProjectState(project: string): Promise<void> {
     JSON.stringify({
       schema_version: "1.0",
       cycle: 1,
-      phase: "PHASE_7_DELIVERY_PR",
+      phase: "PHASE_3_ACCEPTANCE_DELIVERY",
       decision: "DELIVERED",
       clarification: { status: "CLOSED", asked_count: 0 },
       acceptance: { decision: "PASS" },
