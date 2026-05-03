@@ -24,6 +24,7 @@ test("ensureScaffold includes lightweight AGENTS.md governance artifacts", async
   await ensureScaffold(project, "goal");
 
   assert.match(await readFile(join(project, ".supercodex", "FINAL_GOAL.md"), "utf8"), /# FINAL_GOAL/);
+  assert.match(await readFile(join(project, ".supercodex", "FINAL_GOAL.md"), "utf8"), /goal/);
   assert.match(await readFile(join(project, ".supercodex", "TRACEABILITY_MATRIX.md"), "utf8"), /TRACEABILITY_MATRIX/);
   assert.match(await readFile(join(project, ".supercodex", "FINAL_ACCEPTANCE_REPORT.md"), "utf8"), /FINAL_ACCEPTANCE_REPORT/);
   const plan = await readFile(join(project, ".supercodex", "PLAN.md"), "utf8");

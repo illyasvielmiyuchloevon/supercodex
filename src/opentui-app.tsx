@@ -30,6 +30,7 @@ import { TuiTranscriptSource } from "./tui-transcript.js";
 import { chooseNextWork, loadSnapshotForRun, loadSupervisorRuntime } from "./workspace.js";
 import { SUPERCODEX_VERSION } from "./version.js";
 import type { JsonObject } from "./types.js";
+import { managedPlainTextAction } from "./managed-input.js";
 import { readAgentTuiConfig, type AgentTuiConfig } from "./opentui/config";
 import { handleDialogKey as handleSharedDialogKey } from "./opentui/dialog-stack";
 import type { TuiMessage } from "./opentui/message-projection";
@@ -1394,13 +1395,34 @@ function OpenTuiRuntime(props: {
     }
     appendUser(transcript, publishTranscript, value);
     if (props.mode === "managed") {
-      if (!supervisorTask() && activeRunStarted() && !activeRunIsResume()) {
+      let action = managedPlainTextAction({
+        supervisorRunning: Boolean(supervisorTask()),
+        activeRunStarted: activeRunStarted(),
+        activeRunIsResume: activeRunIsResume(),
+      });
+      if (action === "new_goal") {
         const previousRunId = runId();
         const nextRunId = createFreshRunId();
         setRunId(nextRunId);
         await copySupervisorSessionPreferences(props.project, previousRunId, nextRunId);
         transcript.reset();
         appendUser(transcript, publishTranscript, value);
+        action = "initial_goal";
+      }
+      if (action === "initial_goal") {
+        setActiveRunStarted(true);
+        setSupervisorTask(startSupervisor({
+          project: props.project,
+          runId: runId(),
+          goalOrInstruction: value,
+          operatorIntervention: false,
+          authManager: props.authManager,
+          appServerOptions: props.appServerOptions,
+          transcript,
+          publishTranscript,
+          clearTask: () => setSupervisorTask(null),
+        }));
+        return;
       }
       await requestSteer(props.project, value, runId());
       setActiveRunStarted(true);
@@ -1530,13 +1552,12 @@ function OpenTuiRuntime(props: {
       return;
     }
     appendUser(transcript, publishTranscript, value);
-    await requestSteer(props.project, value, nextRunId);
     setActiveRunStarted(true);
     setSupervisorTask(startSupervisor({
       project: props.project,
       runId: nextRunId,
-      goalOrInstruction: "",
-      operatorIntervention: true,
+      goalOrInstruction: value,
+      operatorIntervention: false,
       authManager: props.authManager,
       appServerOptions: props.appServerOptions,
       transcript,

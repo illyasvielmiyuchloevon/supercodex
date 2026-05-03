@@ -15,6 +15,7 @@ import {
   parseStartRequest,
   resumeSelectionMessage,
   renderFrameDiff,
+  managedPlainTextAction,
   shouldCreateFreshRunForManagedMessage,
   shouldTreatRawInputAsPaste,
 } from "../src/tui.js";
@@ -319,6 +320,39 @@ test("fresh managed sessions use sanitized unique run IDs", () => {
 });
 
 test("managed plain input keeps a /start-selected run instead of opening fresh", () => {
+  assert.equal(
+    managedPlainTextAction({
+      supervisorRunning: false,
+      activeRunStarted: false,
+      activeRunIsResume: false,
+    }),
+    "initial_goal",
+  );
+  assert.equal(
+    managedPlainTextAction({
+      supervisorRunning: false,
+      activeRunStarted: true,
+      activeRunIsResume: false,
+    }),
+    "new_goal",
+  );
+  assert.equal(
+    managedPlainTextAction({
+      supervisorRunning: false,
+      activeRunStarted: true,
+      activeRunIsResume: true,
+    }),
+    "steer",
+  );
+  assert.equal(
+    managedPlainTextAction({
+      supervisorRunning: true,
+      activeRunStarted: true,
+      activeRunIsResume: false,
+    }),
+    "steer",
+  );
+
   assert.equal(
     shouldCreateFreshRunForManagedMessage({
       supervisorRunning: false,

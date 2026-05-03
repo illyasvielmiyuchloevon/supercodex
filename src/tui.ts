@@ -33,6 +33,7 @@ import { chooseNextWork, loadSnapshotForRun, loadSupervisorRuntime } from "./wor
 import { canonicalSlashCommandName, slashCommandSuggestions, slashHelpText, type SlashCommandSuggestion } from "./tui-commands.js";
 import { buildTuiFrame } from "./tui-engine.js";
 import { TuiTranscriptSource } from "./tui-transcript.js";
+import { managedPlainTextAction, shouldCreateFreshRunForManagedMessage } from "./managed-input.js";
 import { runOpenTuiFrontend } from "./opentui-launcher.js";
 import { isTextareaNewlineKey } from "./opentui/textarea-keybindings.js";
 import type { JsonObject } from "./types.js";
@@ -130,7 +131,7 @@ async function runLineAttach(options: AttachOptions): Promise<number> {
             project,
             runId: activeRunId,
             goalOrInstruction: newRequest,
-            operatorIntervention: true,
+            operatorIntervention: false,
             authManager: options.authManager,
             appServerOptions: options.appServerOptions ?? defaultAppServerOptions,
             current: supervisorPromise,
@@ -205,19 +206,38 @@ async function runLineAttach(options: AttachOptions): Promise<number> {
           continue;
         }
         if (line.trim() && !line.trim().startsWith("/")) {
-          if (
-            shouldCreateFreshRunForManagedMessage({
-              supervisorRunning: Boolean(supervisorPromise),
-              activeRunStarted,
-              activeRunIsResume,
-            })
-          ) {
+          let action = managedPlainTextAction({
+            supervisorRunning: Boolean(supervisorPromise),
+            activeRunStarted,
+            activeRunIsResume,
+          });
+          if (action === "new_goal") {
             activeRunId = createFreshRunId();
             activeRunStarted = false;
             activeRunIsResume = false;
             currentEventLog = null;
             currentStderrLog = null;
             tail = new LogTail();
+            action = "initial_goal";
+          }
+          if (action === "initial_goal") {
+            activeRunStarted = true;
+            const started = await startManagedSupervisor({
+              project,
+              runId: activeRunId,
+              goalOrInstruction: line.trim(),
+              operatorIntervention: false,
+              authManager: options.authManager,
+              appServerOptions: options.appServerOptions ?? defaultAppServerOptions,
+              current: supervisorPromise,
+            });
+            supervisorPromise = started.task;
+            void started.task?.finally(() => {
+              if (supervisorPromise === started.task) {
+                supervisorPromise = null;
+              }
+            });
+            continue;
           }
           const request = await requestSteer(project, line.trim(), activeRunId);
           activeRunStarted = true;
@@ -272,12 +292,12 @@ async function startManagedSupervisor(input: {
     return { task: input.current };
   }
   const instruction = input.goalOrInstruction.trim();
-  if (instruction) {
+  if (instruction && input.operatorIntervention) {
     await requestSteer(input.project, instruction, input.runId);
   }
   const config = {
     ...defaultSupervisorConfig(input.project),
-    goal: instruction,
+    goal: input.operatorIntervention ? "" : instruction,
     runId: input.runId,
     authManager: input.authManager,
     operatorIntervention: Boolean(input.operatorIntervention),
@@ -348,13 +368,7 @@ export function createFreshRunId(): string {
   return sanitizeRunId(`session-${stamp}-${randomUUID().slice(0, 8)}`);
 }
 
-export function shouldCreateFreshRunForManagedMessage(input: {
-  supervisorRunning: boolean;
-  activeRunStarted: boolean;
-  activeRunIsResume: boolean;
-}): boolean {
-  return !input.supervisorRunning && input.activeRunStarted && !input.activeRunIsResume;
-}
+export { managedPlainTextAction, shouldCreateFreshRunForManagedMessage } from "./managed-input.js";
 
 class TerminalTui {
   private readonly project: string;
@@ -802,14 +816,38 @@ class TerminalTui {
         return false;
       }
       if (line && !line.startsWith("/")) {
-        if (
-          shouldCreateFreshRunForManagedMessage({
-            supervisorRunning: Boolean(this.supervisorPromise),
-            activeRunStarted: this.activeRunStarted,
-            activeRunIsResume: this.activeRunIsResume,
-          })
-        ) {
+        let action = managedPlainTextAction({
+          supervisorRunning: Boolean(this.supervisorPromise),
+          activeRunStarted: this.activeRunStarted,
+          activeRunIsResume: this.activeRunIsResume,
+        });
+        if (action === "new_goal") {
           this.switchActiveRun(createFreshRunId(), "fresh");
+          action = "initial_goal";
+        }
+        if (action === "initial_goal") {
+          this.activeRunStarted = true;
+          const started = await startManagedSupervisor({
+            project: this.project,
+            runId: this.activeRunId,
+            goalOrInstruction: line,
+            operatorIntervention: false,
+            authManager: this.options.authManager,
+            appServerOptions: this.options.appServerOptions ?? defaultAppServerOptions,
+            current: this.supervisorPromise,
+            report: (message) => {
+              this.addLog(message);
+              this.render();
+            },
+          });
+          this.supervisorPromise = started.task;
+          void started.task?.finally(() => {
+            if (this.supervisorPromise === started.task) {
+              this.supervisorPromise = null;
+            }
+            void this.refreshStatus().then(() => this.render());
+          });
+          return false;
         }
         const request = await requestSteer(this.project, line, this.activeRunId);
         this.activeRunStarted = true;
@@ -884,7 +922,7 @@ class TerminalTui {
       project: this.project,
       runId: this.activeRunId,
       goalOrInstruction: value,
-      operatorIntervention: true,
+      operatorIntervention: false,
       authManager: this.options.authManager,
       appServerOptions: this.options.appServerOptions ?? defaultAppServerOptions,
       current: this.supervisorPromise,
