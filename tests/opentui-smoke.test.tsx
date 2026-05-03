@@ -144,8 +144,8 @@ describe("OpenTUI frontend", () => {
     expect(transcriptLines.join("")).toBe(`[operator] ${text}`);
   });
 
-  test("keeps ASCII evidence tokens intact in mixed Chinese assistant text", async () => {
-    const text = "对齐结果里有一个实际不一致：`.supercodex` 已标记交付并记录 commit/push，但三份要求严格遵守的架构/迁移文档仍写着 S18-T4 “open/pending”。这不是重新规划问题，是交付证据回写漏项；我会把这些文档和轻量假设同步到当前已交付状态，然后跑边界/文档卫生验证。";
+  test("keeps ASCII state tokens intact in mixed Chinese assistant text", async () => {
+    const text = "对齐结果里有一个实际不一致：`.supercodex` 已标记交付并记录 commit/push，但三份要求严格遵守的架构/迁移文档仍写着 S18-T4 “open/pending”。这不是重新规划问题，是交付状态回写漏项；我会把这些文档和 FINAL_GOAL 澄清段同步到当前状态，然后跑边界/文档卫生验证。";
     const lines = messagePartDisplayLines({ type: "text", text }, 68);
 
     expect(lines.every((line) => displayCellWidth(line) <= 68)).toBe(true);

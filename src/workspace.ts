@@ -17,14 +17,9 @@ import {
 export const requiredDocs = [
   "AUTO_DEV_STATE.json",
   "FINAL_GOAL.md",
-  "CLARIFICATIONS.md",
-  "ASSUMPTIONS.md",
   "PRD.md",
   "ARCHITECTURE.md",
   "PLAN.md",
-  "TRACEABILITY_MATRIX.md",
-  "CODE_REVIEW_REPORT.md",
-  "FINAL_ACCEPTANCE_REPORT.md",
 ] as const;
 
 const supercodexRoot = ".supercodex";
@@ -61,25 +56,10 @@ function autoDevStateTemplate(goal: string, timestamp: string, planTasks: PlanTa
     phase,
     decision: "IN_PROGRESS",
     last_updated: timestamp,
-    final_goal_source: ".supercodex/FINAL_GOAL.md",
-    artifacts: {
-      final_goal: ".supercodex/FINAL_GOAL.md",
-      clarifications: ".supercodex/CLARIFICATIONS.md",
-      assumptions: ".supercodex/ASSUMPTIONS.md",
-      prd: ".supercodex/PRD.md",
-      architecture: ".supercodex/ARCHITECTURE.md",
-      plan: ".supercodex/PLAN.md",
-      traceability_matrix: ".supercodex/TRACEABILITY_MATRIX.md",
-      code_review_report: ".supercodex/CODE_REVIEW_REPORT.md",
-      final_acceptance_report: ".supercodex/FINAL_ACCEPTANCE_REPORT.md",
-    },
     clarification: {
       status: clarificationClosed ? "CLOSED" : "OPEN",
       asked_count: 0,
       max_questions: 10,
-      pending_questions: [],
-      answered_questions: [],
-      closed_reason: clarificationClosed ? "Initial goal or existing lightweight PLAN was supplied to SuperCodex scaffold." : null,
     },
     plan: {
       current_cycle: "Cycle 1",
@@ -98,10 +78,8 @@ function autoDevStateTemplate(goal: string, timestamp: string, planTasks: PlanTa
     acceptance: {
       status: "NOT_RUN",
       decision: "PENDING",
-      remaining_gaps: [],
     },
     delivery: {
-      readme_updated: false,
       git_committed: false,
       pr_created: false,
     },
@@ -136,7 +114,7 @@ export async function ensureScaffold(projectInput: string, goal = "", options: {
     if (await pathExists(path)) {
       continue;
     }
-    const content = governanceArtifactStub(doc, goal);
+    const content = requiredFileStub(doc, goal);
     if (await writeTextIfMissing(path, content)) {
       created.push(path);
     }
@@ -221,7 +199,7 @@ export async function loadSnapshot(projectInput: string): Promise<ProjectSnapsho
     missingDocs,
     planTasks,
     supervisorSession,
-    done: autoDevStateDelivered(autoDevState, docsPresent, supervisorSession),
+    done: autoDevStateDelivered(autoDevState, supervisorSession),
     phaseLocked: autoDevPhaseLocked(autoDevState),
   };
 }
@@ -229,7 +207,7 @@ export async function loadSnapshot(projectInput: string): Promise<ProjectSnapsho
 export async function loadSnapshotForRun(projectInput: string, runId?: string | null): Promise<ProjectSnapshot> {
   const snapshot = await loadSnapshot(projectInput);
   snapshot.supervisorSession = await loadRecoverableSupervisorSession(snapshot.project, runId);
-  snapshot.done = autoDevStateDelivered(snapshot.autoDevState, snapshot.docsPresent, snapshot.supervisorSession);
+  snapshot.done = autoDevStateDelivered(snapshot.autoDevState, snapshot.supervisorSession);
   return snapshot;
 }
 
@@ -261,27 +239,27 @@ export function parsePlanTasks(planText: string): PlanTask[] {
 }
 
 export function chooseNextWork(snapshot: ProjectSnapshot): WorkItem {
-  if (snapshot.done && autoDevStateDelivered(snapshot.autoDevState, snapshot.docsPresent, snapshot.supervisorSession)) {
+  if (snapshot.done && autoDevStateDelivered(snapshot.autoDevState, snapshot.supervisorSession)) {
     return { kind: "done", title: "Project delivered", reason: ".supercodex/AUTO_DEV_STATE.json decision is DELIVERED, final acceptance passed, and Phase 7 delivery is complete.", source: "auto-dev-state" };
   }
   const criticalMissing = snapshot.missingDocs.filter((doc) => doc === autoDevStateFile || doc === "FINAL_GOAL.md" || doc === "PLAN.md");
   if (criticalMissing.length > 0) {
     return {
       kind: "supplement_docs",
-      title: "补齐 AGENTS.md 关键治理产物",
-      reason: `Missing critical governance artifacts: ${criticalMissing.join(", ")}`,
+      title: "补齐 AGENTS.md 关键文件",
+      reason: `Missing critical required files: ${criticalMissing.join(", ")}`,
       source: "docs",
     };
   }
   if (snapshot.missingDocs.length > 0) {
     return {
       kind: "supplement_docs",
-      title: "补齐 AGENTS.md 治理产物",
-      reason: `Missing governance artifacts: ${snapshot.missingDocs.join(", ")}`,
+      title: "补齐 AGENTS.md 必需文件",
+      reason: `Missing required files: ${snapshot.missingDocs.join(", ")}`,
       source: "docs",
     };
   }
-  const autoWork = chooseFromAutoDevState(snapshot.autoDevState, snapshot.planTasks, snapshot.docsPresent, snapshot.supervisorSession);
+  const autoWork = chooseFromAutoDevState(snapshot.autoDevState, snapshot.planTasks, snapshot.supervisorSession);
   if (autoWork) {
     return autoWork;
   }
@@ -301,7 +279,7 @@ export function chooseNextWork(snapshot: ProjectSnapshot): WorkItem {
     return {
       kind: "stage_gate",
       title: "进入 Phase 6 最终目标验收",
-      reason: "All parsed PLAN tasks are checked; AGENTS.md requires FINAL_ACCEPTANCE_REPORT before delivery.",
+      reason: "All parsed PLAN tasks are checked; AGENTS.md requires Phase 6 final acceptance before delivery.",
       source: "final-acceptance",
     };
   }
@@ -313,7 +291,7 @@ export function chooseNextWork(snapshot: ProjectSnapshot): WorkItem {
   };
 }
 
-function chooseFromAutoDevState(autoDevState: JsonObject, planTasks: PlanTask[], docsPresent: Record<string, boolean>, supervisorSession: JsonObject): WorkItem | null {
+function chooseFromAutoDevState(autoDevState: JsonObject, planTasks: PlanTask[], supervisorSession: JsonObject): WorkItem | null {
   if (!Object.keys(autoDevState).length) {
     return null;
   }
@@ -347,11 +325,11 @@ function chooseFromAutoDevState(autoDevState: JsonObject, planTasks: PlanTask[],
     };
   }
 
-  if (decision === "DELIVERED" && !autoDevStateDelivered(autoDevState, docsPresent, supervisorSession) && !hasOpenPlanWork) {
+  if (decision === "DELIVERED" && !autoDevStateDelivered(autoDevState, supervisorSession) && !hasOpenPlanWork) {
     return {
       kind: "stage_gate",
-      title: "补齐最终验收与交付闭环证据",
-      reason: "AUTO_DEV_STATE decision is DELIVERED, but final acceptance or README/Git delivery closure evidence is incomplete.",
+      title: "补齐最终验收与交付闭环状态",
+      reason: "AUTO_DEV_STATE decision is DELIVERED, but final acceptance or Git delivery state is incomplete.",
       source: "auto-dev-state",
     };
   }
@@ -360,7 +338,7 @@ function chooseFromAutoDevState(autoDevState: JsonObject, planTasks: PlanTask[],
     return {
       kind: "stage_gate",
       title: "执行 Phase 7 最终交付与 PR",
-      reason: "Final acceptance passed; AGENTS.md requires README/Git delivery closure.",
+      reason: "Final acceptance passed; AGENTS.md requires Git delivery closure.",
       source: "auto-dev-state",
     };
   }
@@ -369,7 +347,7 @@ function chooseFromAutoDevState(autoDevState: JsonObject, planTasks: PlanTask[],
     return {
       kind: "stage_gate",
       title: "根据最终验收失败创建下一 Cycle",
-      reason: "FINAL_ACCEPTANCE_REPORT is failed; update PRD, architecture, PLAN, and TRACEABILITY_MATRIX before continuing.",
+      reason: "AUTO_DEV_STATE.acceptance is failed; update FINAL_GOAL, PRD, architecture, PLAN, and AUTO_DEV_STATE status parameters before continuing.",
       source: "auto-dev-state",
     };
   }
@@ -449,7 +427,7 @@ function phaseWork(phase: string, stageId: string | null): WorkItem | null {
     case "PHASE_3_PLAN":
       return {
         kind: "stage_gate",
-        title: "Phase 3 制定或更新 Plan 与追踪矩阵",
+        title: "Phase 3 制定或更新 Plan 与覆盖状态",
         reason: "AUTO_DEV_STATE phase is PHASE_3_PLAN.",
         source: "auto-dev-state",
       };
@@ -611,7 +589,7 @@ function normalizeRuntimePathString(project: string, value: string): string {
   return value;
 }
 
-function governanceArtifactStub(doc: string, goal: string): string {
+function requiredFileStub(doc: string, goal: string): string {
   switch (doc) {
     case "FINAL_GOAL.md":
       return `# FINAL_GOAL
@@ -619,37 +597,29 @@ function governanceArtifactStub(doc: string, goal: string): string {
 ## 用户原始目标
 ${goal || "Not provided yet."}
 
-## 结构化最终目标
-- 待 Phase 0 根据用户原始目标补全。
+## 最终澄清后的目标
+- 待 Phase 0 根据用户原始目标、澄清回答和合理假设补全。
+
+## 澄清记录与回答
+- 暂无。
+
+## 合理假设
+- 暂无。
+
+## 验收标准
+- 待 PRD 与验收状态细化。
 
 ## 明确不做的内容
 - 未声明。
 
-## 验收标准
-- 待 PRD 与 TRACEABILITY_MATRIX 细化。
-
 ## 风险与边界
 - 待架构阶段补全。
 `;
-    case "CLARIFICATIONS.md":
-      return "# CLARIFICATIONS\n\nNo blocking clarification has been recorded yet.\n";
-    case "ASSUMPTIONS.md":
-      return "# ASSUMPTIONS\n\nNo assumptions have been recorded yet.\n";
-    case "TRACEABILITY_MATRIX.md":
-      return `# TRACEABILITY_MATRIX
-
-| Final Goal | Acceptance Criteria | PRD Requirement | Architecture Component | Plan Task | Test/Review Evidence | Status |
-|---|---|---|---|---|---|---|
-`;
-    case "CODE_REVIEW_REPORT.md":
-      return "# CODE_REVIEW_REPORT\n\nNo review has been recorded yet.\n";
-    case "FINAL_ACCEPTANCE_REPORT.md":
-      return "# FINAL_ACCEPTANCE_REPORT\n\n## Final Goal Coverage\n\n## PRD Coverage\n\n## Test Summary\n\n## Code Review Summary\n\n## Remaining Gaps\n\n## Decision\n- PENDING\n";
     case "ARCHITECTURE.md":
     case "PRD.md":
       return `# ${doc.slice(0, -3)}
 
-This file was created by SuperCodex as a missing AGENTS.md governance artifact.
+This file was created by SuperCodex as a missing required file.
 It should be filled by the active Codex work cycle without recreating the old heavy docs tree.
 
 Request/Goal: ${goal || "Not provided yet."}
@@ -662,51 +632,24 @@ Goal: ${goal || "Not provided yet."}
 ## Cycle 1
 
 ### Milestone 1: Foundation Capability Closure
-- Goal: Fill this milestone from PRD and ARCHITECTURE.
-- Stages: Stage 1-3
-- Commit boundary: Create a milestone commit after all included stages pass their checks.
-- Push policy: Push if a remote is available.
-- Thread boundary: Continue in the same plan-cycle thread.
 
 #### Stage 1: Scope and Architecture Alignment
-- [ ] Task 1.1: Align PRD, architecture, traceability, and the first implementation slice
-  - Goal: Define a concrete, verifiable slice for this milestone.
-  - Files: .supercodex/PRD.md, .supercodex/ARCHITECTURE.md, .supercodex/FINAL_GOAL.md, .supercodex/TRACEABILITY_MATRIX.md
-  - Steps: Map the final-goal requirements to the milestone stages and implementation files.
-  - Verify: PLAN links each planned task to concrete evidence.
+- [ ] Task 1.1: Align PRD, architecture, and the first implementation slice
 
 #### Stage 2: Implementation Slice
 - [ ] Task 2.1: Implement the milestone capability slice
-  - Goal: Deliver meaningful user-visible or system capability.
-  - Files: To be filled by Phase 3 planning.
-  - Steps: To be filled by Phase 3 planning.
-  - Verify: To be filled by Phase 3 planning.
 
 #### Stage 3: Milestone Quality Closure
-- [ ] Task 3.1: Close tests, review, traceability, and state for this milestone
-  - Goal: Prove this milestone is stable before the intermediate commit.
-  - Files: .supercodex/CODE_REVIEW_REPORT.md, .supercodex/TRACEABILITY_MATRIX.md, .supercodex/AUTO_DEV_STATE.json, .supercodex/PLAN.md
-  - Steps: Run relevant checks, repair failures, update milestone completion state.
-  - Verify: PLAN/TRACEABILITY_MATRIX contain acceptance evidence and AUTO_DEV_STATE points to the next action.
+- [ ] Task 3.1: Close tests, review, and state for this milestone
 
 #### Milestone Gate
-- [ ] Relevant tests / lint / typecheck / build passed
-- [ ] CODE_REVIEW_REPORT and TRACEABILITY_MATRIX updated
+- [ ] Necessary checks passed
 - [ ] PLAN / AUTO_DEV_STATE updated
-- [ ] Milestone commit created
-- [ ] Push attempted if remote is available
 
 ### Milestone 2: Next Capability Closure
-- Goal: Add the next group of stages after Milestone 1 is clear.
-- Stages: Stage 4-7
-- Commit boundary: Create a milestone commit after all included stages pass their checks.
 
 #### Stage 4: Next Implementation Slice
 - [ ] Task 4.1: Define and implement the next PRD-backed capability slice
-  - Goal: To be filled by Phase 3 planning.
-  - Files: To be filled by Phase 3 planning.
-  - Steps: To be filled by Phase 3 planning.
-  - Verify: To be filled by Phase 3 planning.
 `;
     default:
       return `# ${doc.replaceAll("_", " ").replace(/\.md$/i, "")}\n\nCreated by SuperCodex AGENTS.md scaffold.\n`;
@@ -735,26 +678,21 @@ function projectAgentsTemplateCandidates(): string[] {
 function fallbackProjectAgentsTemplate(): string {
   return `# AGENTS.md - SuperCodex Project Instructions
 
-This project is managed by SuperCodex using the lightweight AGENTS.md governance protocol. Before doing work, Codex must read \`.supercodex/AUTO_DEV_STATE.json\`, \`.supercodex/PLAN.md\`, runtime state, and git status, then continue from the recorded phase/task instead of restarting from scratch.
+This project is managed by SuperCodex using the lightweight AGENTS.md protocol. Before doing work, Codex must read \`.supercodex/AUTO_DEV_STATE.json\`, \`.supercodex/FINAL_GOAL.md\`, \`.supercodex/PRD.md\`, \`.supercodex/ARCHITECTURE.md\`, \`.supercodex/PLAN.md\`, and git status, then continue from the recorded phase/task instead of restarting from scratch.
 
-Use available sub-agent, worker, explorer, tester, or reviewer capabilities when they materially help: independent exploration, disjoint implementation ownership, repeated failure analysis, parallel testing, code review, security review, or final-goal coverage review. Do not use them for tiny tasks or overlapping write scopes. The main agent remains responsible for integration, verification, and governance updates.
+Use available sub-agent, worker, explorer, tester, or reviewer capabilities when they materially help: independent exploration, disjoint implementation ownership, repeated failure analysis, parallel testing, code review, security review, or final-goal coverage review. Do not use them for tiny tasks or overlapping write scopes. The main agent remains responsible for integration, verification, and required doc updates.
 
-Required durable governance artifacts:
+Required durable files:
 
 - \`.supercodex/AUTO_DEV_STATE.json\`
 - \`.supercodex/FINAL_GOAL.md\`
-- \`.supercodex/CLARIFICATIONS.md\`
-- \`.supercodex/ASSUMPTIONS.md\`
 - \`.supercodex/PRD.md\`
 - \`.supercodex/ARCHITECTURE.md\`
 - \`.supercodex/PLAN.md\`
-- \`.supercodex/TRACEABILITY_MATRIX.md\`
-- \`.supercodex/CODE_REVIEW_REPORT.md\`
-- \`.supercodex/FINAL_ACCEPTANCE_REPORT.md\`
 
-\`.supercodex/AUTO_DEV_STATE.json\` is the machine-readable scheduling source. Markdown files are the human-readable task, goal, plan, traceability, review, and final acceptance artifacts. Do not recreate old heavy docs trees unless the user explicitly asks for them.
+\`.supercodex/AUTO_DEV_STATE.json\` is the machine-readable scheduling source. \`.supercodex/FINAL_GOAL.md\` stores the original user input, final clarified goal, clarification answers, and assumptions. Markdown files are limited to FINAL_GOAL, PRD, ARCHITECTURE, and PLAN. SuperCodex may record runtime logs automatically; Codex must not hand-maintain extra Markdown reports or runtime log files. Do not recreate old heavy docs trees unless the user explicitly asks for them.
 
-Only Phase 0 may ask the user blocking clarification questions. After Phase 0, fix errors autonomously, keep AUTO_DEV_STATE valid JSON through atomic writes, and do not claim delivery until FINAL_ACCEPTANCE_REPORT says PASS and Phase 7 delivery is complete.
+Only Phase 0 may ask the user blocking clarification questions. After Phase 0, fix errors autonomously, keep AUTO_DEV_STATE valid JSON through atomic writes, and do not claim delivery until AUTO_DEV_STATE.acceptance says PASS and Phase 7 delivery is complete.
 
 \`.supercodex/PLAN.md\` should group Stage tasks inside Cycle and Milestone sections. Stage remains the execution unit; Milestone is the intermediate commit/push boundary. Do not create a fresh Codex thread for Stage changes, Milestone commits, or pushes. When the PLAN is exhausted, SuperCodex must run the full-project Phase 6 final acceptance before Phase 7.
 `;
@@ -790,14 +728,12 @@ function autoDevPhaseLocked(autoDevState: JsonObject): boolean {
   return phase !== "PHASE_0_CLARIFICATION" || stringValue(clarification.status, "") === "CLOSED";
 }
 
-function autoDevStateDelivered(autoDevState: JsonObject, docsPresent: Record<string, boolean>, supervisorSession: JsonObject): boolean {
+function autoDevStateDelivered(autoDevState: JsonObject, supervisorSession: JsonObject): boolean {
   const delivery = objectValue(autoDevState.delivery);
   return (
     stringValue(autoDevState.decision, "") === "DELIVERED" &&
-    Boolean(docsPresent["FINAL_ACCEPTANCE_REPORT.md"]) &&
     planReviewCompletedForCycle(autoDevState, supervisorSession) &&
     acceptancePassed(autoDevState) &&
-    Boolean(delivery.readme_updated) &&
     Boolean(delivery.git_committed)
   );
 }

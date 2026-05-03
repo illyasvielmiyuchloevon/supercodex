@@ -2,7 +2,7 @@
 
 SuperCodex is a TypeScript/Node.js supervisor for Codex CLI. It runs Codex through the official `codex app-server --listen stdio://` JSON-RPC interface, keeps project state under `.supercodex/`, and provides an OpenTUI/Solid terminal UI for long-running, resumable software delivery work.
 
-Current version: `0.13.4` (0.13 patch release).
+Current version: `0.13.5` (0.13 patch release).
 
 The current 0.13 version is app-server only. The old one-shot runner and hand-drawn raw TUI are no longer the formal path.
 
@@ -78,7 +78,7 @@ cd C:\supercodex
 Remove-Item -Recurse -Force .\dist, .\node_modules
 ```
 
-To remove SuperCodex state from a target project, delete that project's `.supercodex/` directory only after you no longer need its resume state, logs, or reports:
+To remove SuperCodex state from a target project, delete that project's `.supercodex/` directory only after you no longer need its resume state or logs:
 
 ```powershell
 Remove-Item -Recurse -Force .\.supercodex
@@ -273,14 +273,9 @@ Project-local runtime and recovery files:
 .supercodex/
   AUTO_DEV_STATE.json
   FINAL_GOAL.md
-  CLARIFICATIONS.md
-  ASSUMPTIONS.md
   PRD.md
   ARCHITECTURE.md
   PLAN.md
-  TRACEABILITY_MATRIX.md
-  CODE_REVIEW_REPORT.md
-  FINAL_ACCEPTANCE_REPORT.md
   runtime/
     session.json
     runtime.json
@@ -290,7 +285,7 @@ Project-local runtime and recovery files:
     supercodex/progress.jsonl
 ```
 
-`.supercodex/` is runtime state and is ignored by git by default.
+`AUTO_DEV_STATE.json` contains only machine-readable SuperCodex state parameters. Human-maintained files are limited to `FINAL_GOAL.md`, `PRD.md`, `ARCHITECTURE.md`, and `PLAN.md`. `.supercodex/` is runtime state and is ignored by git by default.
 
 ## Development
 

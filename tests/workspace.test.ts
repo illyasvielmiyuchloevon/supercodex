@@ -18,21 +18,22 @@ test("ensureScaffold preserves existing PRD and PLAN while adding gitignore rule
   assert.match(await readFile(join(project, ".gitignore"), "utf8"), /^\.supercodex\/$/m);
 });
 
-test("ensureScaffold includes lightweight AGENTS.md governance artifacts", async () => {
-  const project = await mkdtemp(join(tmpdir(), "supercodex-final-artifacts-"));
+test("ensureScaffold includes lightweight AGENTS.md required files", async () => {
+  const project = await mkdtemp(join(tmpdir(), "supercodex-final-files-"));
 
   await ensureScaffold(project, "goal");
 
   assert.match(await readFile(join(project, ".supercodex", "FINAL_GOAL.md"), "utf8"), /# FINAL_GOAL/);
   assert.match(await readFile(join(project, ".supercodex", "FINAL_GOAL.md"), "utf8"), /goal/);
-  assert.match(await readFile(join(project, ".supercodex", "TRACEABILITY_MATRIX.md"), "utf8"), /TRACEABILITY_MATRIX/);
-  assert.match(await readFile(join(project, ".supercodex", "FINAL_ACCEPTANCE_REPORT.md"), "utf8"), /FINAL_ACCEPTANCE_REPORT/);
+  await assert.rejects(readFile(join(project, ".supercodex", "TRACEABILITY_MATRIX.md"), "utf8"));
+  await assert.rejects(readFile(join(project, ".supercodex", "CODE_REVIEW_REPORT.md"), "utf8"));
+  await assert.rejects(readFile(join(project, ".supercodex", "FINAL_ACCEPTANCE_REPORT.md"), "utf8"));
   const plan = await readFile(join(project, ".supercodex", "PLAN.md"), "utf8");
   assert.match(plan, /## Cycle 1/);
   assert.match(plan, /### Milestone 1:/);
   assert.match(plan, /#### Stage 1:/);
   assert.match(plan, /#### Milestone Gate/);
-  assert.match(plan, /Milestone commit created/);
+  assert.match(plan, /Necessary checks passed/);
   const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as { schema_version?: string; goal_mode?: boolean; entry_mode?: string; phase?: string; clarification?: { status?: string } };
   assert.equal(state.schema_version, "1.0");
   assert.equal(state.goal_mode, true);
@@ -192,14 +193,9 @@ test("parsePlanTasks and chooseNextWork recover unchecked PLAN tasks", async () 
     docsPresent: {
       "AUTO_DEV_STATE.json": true,
       "FINAL_GOAL.md": true,
-      "CLARIFICATIONS.md": true,
-      "ASSUMPTIONS.md": true,
       "PRD.md": true,
       "ARCHITECTURE.md": true,
       "PLAN.md": true,
-      "TRACEABILITY_MATRIX.md": true,
-      "CODE_REVIEW_REPORT.md": true,
-      "FINAL_ACCEPTANCE_REPORT.md": true,
     },
     missingDocs: [],
     planTasks: tasks,
@@ -226,7 +222,7 @@ test("chooseNextWork requires a Phase 6 plan-review marker before delivery can s
     ...base,
     state: {},
     autoDevState: { decision: "DELIVERED", acceptance: { decision: "PENDING" } },
-    docsPresent: { "AUTO_DEV_STATE.json": true, "FINAL_GOAL.md": true, "CLARIFICATIONS.md": true, "ASSUMPTIONS.md": true, "PRD.md": true, "ARCHITECTURE.md": true, "PLAN.md": true, "TRACEABILITY_MATRIX.md": true, "CODE_REVIEW_REPORT.md": true, "FINAL_ACCEPTANCE_REPORT.md": true },
+    docsPresent: { "AUTO_DEV_STATE.json": true, "FINAL_GOAL.md": true, "PRD.md": true, "ARCHITECTURE.md": true, "PLAN.md": true },
   });
   assert.equal(auditRequired.kind, "stage_gate");
   assert.equal(auditRequired.source, "final-acceptance");
@@ -235,8 +231,8 @@ test("chooseNextWork requires a Phase 6 plan-review marker before delivery can s
     ...base,
     done: true,
     state: {},
-    autoDevState: { cycle: 1, decision: "DELIVERED", acceptance: { decision: "PASS" }, delivery: { readme_updated: true, git_committed: true } },
-    docsPresent: { "AUTO_DEV_STATE.json": true, "FINAL_GOAL.md": true, "CLARIFICATIONS.md": true, "ASSUMPTIONS.md": true, "PRD.md": true, "ARCHITECTURE.md": true, "PLAN.md": true, "TRACEABILITY_MATRIX.md": true, "CODE_REVIEW_REPORT.md": true, "FINAL_ACCEPTANCE_REPORT.md": true },
+    autoDevState: { cycle: 1, decision: "DELIVERED", acceptance: { decision: "PASS" }, delivery: { git_committed: true } },
+    docsPresent: { "AUTO_DEV_STATE.json": true, "FINAL_GOAL.md": true, "PRD.md": true, "ARCHITECTURE.md": true, "PLAN.md": true },
   });
   assert.equal(prematureDelivery.kind, "stage_gate");
   assert.equal(prematureDelivery.source, "final-acceptance");
@@ -246,8 +242,8 @@ test("chooseNextWork requires a Phase 6 plan-review marker before delivery can s
     done: true,
     state: {},
     supervisorSession: { plan_review_completed: true, plan_review_cycle: "1" },
-    autoDevState: { cycle: 1, decision: "DELIVERED", acceptance: { decision: "PASS" }, delivery: { readme_updated: true, git_committed: true } },
-    docsPresent: { "AUTO_DEV_STATE.json": true, "FINAL_GOAL.md": true, "CLARIFICATIONS.md": true, "ASSUMPTIONS.md": true, "PRD.md": true, "ARCHITECTURE.md": true, "PLAN.md": true, "TRACEABILITY_MATRIX.md": true, "CODE_REVIEW_REPORT.md": true, "FINAL_ACCEPTANCE_REPORT.md": true },
+    autoDevState: { cycle: 1, decision: "DELIVERED", acceptance: { decision: "PASS" }, delivery: { git_committed: true } },
+    docsPresent: { "AUTO_DEV_STATE.json": true, "FINAL_GOAL.md": true, "PRD.md": true, "ARCHITECTURE.md": true, "PLAN.md": true },
   });
   assert.equal(complete.kind, "done");
 });
@@ -261,7 +257,7 @@ test("chooseNextWork maps final acceptance pass and fail decisions to Phase 7 or
     supervisorSession: { plan_review_completed: true, plan_review_cycle: "1" },
     done: false,
     phaseLocked: true,
-    docsPresent: { "AUTO_DEV_STATE.json": true, "FINAL_GOAL.md": true, "CLARIFICATIONS.md": true, "ASSUMPTIONS.md": true, "PRD.md": true, "ARCHITECTURE.md": true, "PLAN.md": true, "TRACEABILITY_MATRIX.md": true, "CODE_REVIEW_REPORT.md": true, "FINAL_ACCEPTANCE_REPORT.md": true },
+    docsPresent: { "AUTO_DEV_STATE.json": true, "FINAL_GOAL.md": true, "PRD.md": true, "ARCHITECTURE.md": true, "PLAN.md": true },
   };
 
   const passWork = chooseNextWork({
@@ -291,7 +287,7 @@ test("chooseNextWork maps final acceptance pass and fail decisions to Phase 7 or
 test("loadSnapshot marks delivered only after Phase 7 delivery closure", async () => {
   const project = await mkdtemp(join(tmpdir(), "supercodex-delivery-"));
   await mkdir(join(project, ".supercodex"), { recursive: true });
-  for (const doc of ["FINAL_GOAL.md", "CLARIFICATIONS.md", "ASSUMPTIONS.md", "PRD.md", "ARCHITECTURE.md", "PLAN.md", "TRACEABILITY_MATRIX.md", "CODE_REVIEW_REPORT.md", "FINAL_ACCEPTANCE_REPORT.md"]) {
+  for (const doc of ["FINAL_GOAL.md", "PRD.md", "ARCHITECTURE.md", "PLAN.md"]) {
     await writeFile(join(project, ".supercodex", doc), "# doc\n", "utf8");
   }
 
@@ -302,7 +298,7 @@ test("loadSnapshot marks delivered only after Phase 7 delivery closure", async (
     clarification: { status: "CLOSED" },
     plan: { completed_task_ids: ["1.1"], remaining_task_ids: [] },
     acceptance: { decision: "PASS" },
-    delivery: { readme_updated: false, git_committed: false, pr_created: false },
+    delivery: { git_committed: false, pr_created: false },
   };
   await writeFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), JSON.stringify(state), "utf8");
 
@@ -316,7 +312,7 @@ test("loadSnapshot marks delivered only after Phase 7 delivery closure", async (
     join(project, ".supercodex", "AUTO_DEV_STATE.json"),
     JSON.stringify({
       ...state,
-      delivery: { readme_updated: true, git_committed: true, pr_created: false },
+      delivery: { git_committed: true, pr_created: false },
     }),
     "utf8",
   );

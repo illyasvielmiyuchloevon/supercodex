@@ -2,7 +2,7 @@
 
 This guide is for day-to-day use. It is not an internal `.supercodex` delivery log. It describes how the current app-server/OpenTUI version is installed, started, resumed, configured, and verified.
 
-Current version: `0.13.4` (0.13 patch release). License: MIT.
+Current version: `0.13.5` (0.13 patch release). License: MIT.
 
 ## 1. Install the Current Version
 
@@ -62,7 +62,7 @@ cd C:\supercodex
 Remove-Item -Recurse -Force .\dist, .\node_modules
 ```
 
-Target-project runtime state lives in `.supercodex/`. Delete it only when you no longer need resume state, reports, or logs:
+Target-project runtime state lives in `.supercodex/`. Delete it only when you no longer need resume state or logs:
 
 ```powershell
 Remove-Item -Recurse -Force .\.supercodex
@@ -110,7 +110,7 @@ starts the saved `main` run.
 
 After an unexpected terminal close, process exit, machine restart, or interrupted SuperCodex session, this version restores in this order:
 
-1. Reads project `.supercodex/AUTO_DEV_STATE.json`, `FINAL_GOAL.md`, `PLAN.md`, `TRACEABILITY_MATRIX.md`, and recent reports.
+1. Reads project `.supercodex/AUTO_DEV_STATE.json`, `FINAL_GOAL.md`, and `PLAN.md`.
 2. Reads the selected run's `session.json`.
 3. If Codex was running when the process stopped, reads the active `runtime.json` thread.
 4. If a usable thread is found, calls Codex app-server `thread/resume`.

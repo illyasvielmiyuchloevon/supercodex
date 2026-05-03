@@ -2,7 +2,7 @@
 
 SuperCodex 是一个 TypeScript/Node.js 编写的 Codex CLI 外部监督器。它通过正式的 `codex app-server --listen stdio://` JSON-RPC 接口控制 Codex 的 thread/turn 生命周期，把项目运行状态保存到 `.supercodex/`，并提供 OpenTUI/Solid 终端界面，用于长时间、可恢复、可干预的软件开发流程。
 
-当前版本：`0.13.4`（0.13 补丁版本）。
+当前版本：`0.13.5`（0.13 补丁版本）。
 
 当前 0.13 版本的正式运行架构只有 `codex app-server`。旧的一次性 runner 和手写 raw-mode TUI 只保留为兼容/降级路径，不再是正式主路径。
 
@@ -78,7 +78,7 @@ cd C:\supercodex
 Remove-Item -Recurse -Force .\dist, .\node_modules
 ```
 
-如果要移除某个目标项目中的 SuperCodex 运行状态，请确认不再需要续跑状态、日志和报告后再删除该项目的 `.supercodex/`：
+如果要移除某个目标项目中的 SuperCodex 运行状态，请确认不再需要续跑状态或日志后再删除该项目的 `.supercodex/`：
 
 ```powershell
 Remove-Item -Recurse -Force .\.supercodex
@@ -273,14 +273,9 @@ supercodex run --project C:\path\to\project --run-id main
 .supercodex/
   AUTO_DEV_STATE.json
   FINAL_GOAL.md
-  CLARIFICATIONS.md
-  ASSUMPTIONS.md
   PRD.md
   ARCHITECTURE.md
   PLAN.md
-  TRACEABILITY_MATRIX.md
-  CODE_REVIEW_REPORT.md
-  FINAL_ACCEPTANCE_REPORT.md
   runtime/
     session.json
     runtime.json
@@ -290,7 +285,7 @@ supercodex run --project C:\path\to\project --run-id main
     supercodex/progress.jsonl
 ```
 
-`.supercodex/` 是运行态目录，默认写入 `.gitignore`。
+`AUTO_DEV_STATE.json` 只保存 SuperCodex 可读取的机器状态参数。人工维护文件只保留 `FINAL_GOAL.md`、`PRD.md`、`ARCHITECTURE.md` 和 `PLAN.md`。`.supercodex/` 是运行态目录，默认写入 `.gitignore`。
 
 ## 开发与验证
 

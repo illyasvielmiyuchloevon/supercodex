@@ -2,7 +2,7 @@
 
 这份指南面向实际使用，不是 `.supercodex` 内部交付记录。它只说明当前版本怎么安装、启动、续跑、切 session、切权限、处理交互请求和排查常见问题。
 
-当前版本：`0.13.4`（0.13 补丁版本）。许可证：MIT。
+当前版本：`0.13.5`（0.13 补丁版本）。许可证：MIT。
 
 ## 1. 先确认你装的是当前版本
 
@@ -62,7 +62,7 @@ cd C:\supercodex
 Remove-Item -Recurse -Force .\dist, .\node_modules
 ```
 
-目标项目中的运行状态位于 `.supercodex/`。只有在不再需要续跑状态、报告或日志时再删除：
+目标项目中的运行状态位于 `.supercodex/`。只有在不再需要续跑状态或日志时再删除：
 
 ```powershell
 Remove-Item -Recurse -Force .\.supercodex
@@ -110,7 +110,7 @@ supercodex
 
 当上次 SuperCodex 因为终端关闭、进程退出、机器重启或意外中断停止时，本版本会按这个顺序恢复：
 
-1. 读取当前项目 `.supercodex/AUTO_DEV_STATE.json`、`FINAL_GOAL.md`、`PLAN.md`、`TRACEABILITY_MATRIX.md` 和最近报告。
+1. 读取当前项目 `.supercodex/AUTO_DEV_STATE.json`、`FINAL_GOAL.md` 和 `PLAN.md`。
 2. 读取对应 run 的 `session.json`。
 3. 如果进程是在 Codex turn 运行中被关掉，读取 `runtime.json` 里保存的 active thread。
 4. 如果找到可恢复 thread，调用 Codex app-server 的 `thread/resume`。
