@@ -2,7 +2,7 @@
 
 SuperCodex is a TypeScript/Node.js supervisor for Codex CLI. It runs Codex through the official `codex app-server --listen stdio://` JSON-RPC interface, keeps project state under `.supercodex/`, and provides an OpenTUI/Solid terminal UI for long-running, resumable software delivery work.
 
-Current version: `0.13.1` (0.13 patch release).
+Current version: `0.13.2` (0.13 patch release).
 
 The current 0.13 version is app-server only. The old one-shot runner and hand-drawn raw TUI are no longer the formal path.
 
