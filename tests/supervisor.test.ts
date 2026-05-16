@@ -186,6 +186,86 @@ test("unauthorized auth failures rotate accounts and retry the same thread", asy
   ]);
 });
 
+test("unauthorized auth failures in goal mode keep the same thread and goal prompt", async () => {
+  const project = await mkdtemp(join(tmpdir(), "supercodex-goal-auth-"));
+  await writeProjectState(project, { seedPrompt: false });
+  const calls: Array<{ threadId?: string | null; resume?: boolean; prompt?: string }> = [];
+  const rotations: string[] = [];
+  const runner: Runner = {
+    async run(input) {
+      calls.push({ threadId: input.threadId, resume: input.resume, prompt: input.prompt });
+      return calls.length === 1 ? failedResult("thr_goal_auth", "unauthorized") : result("thr_goal_auth");
+    },
+  };
+  const authManager = {
+    async listAccounts() {
+      return ["account-1", "account-2"];
+    },
+    async rotateAfterAuthFailure(reason: "usage_limit" | "unauthorized") {
+      rotations.push(reason);
+      return "account-2";
+    },
+  } as unknown as CodexAuthManager;
+  const config = {
+    ...defaultSupervisorConfig(project),
+    goal: "Build all",
+    goalMode: true,
+    maxCycles: 2,
+    retryBaseSeconds: 0,
+    retryMaxSeconds: 0,
+    authManager,
+  };
+
+  const code = await new Supervisor(config, runner, async () => undefined).run();
+
+  assert.equal(code, 0);
+  assert.deepEqual(rotations, ["unauthorized"]);
+  assert.deepEqual(calls, [
+    { threadId: null, resume: false, prompt: "/goal Build all" },
+    { threadId: "thr_goal_auth", resume: true, prompt: "/goal Build all" },
+  ]);
+});
+
+test("usage_limit failures in goal mode rotate auth and keep the same goal thread", async () => {
+  const project = await mkdtemp(join(tmpdir(), "supercodex-goal-usage-"));
+  await writeProjectState(project, { seedPrompt: false });
+  const calls: Array<{ threadId?: string | null; resume?: boolean; prompt?: string }> = [];
+  const rotations: Array<"usage_limit" | "unauthorized"> = [];
+  const runner: Runner = {
+    async run(input) {
+      calls.push({ threadId: input.threadId, resume: input.resume, prompt: input.prompt });
+      return calls.length === 1 ? failedResult("thr_goal_usage", "usage_limit") : result("thr_goal_usage");
+    },
+  };
+  const authManager = {
+    async listAccounts() {
+      return ["account-1", "account-2"];
+    },
+    async rotateAfterAuthFailure(reason: "usage_limit" | "unauthorized") {
+      rotations.push(reason);
+      return "account-2";
+    },
+  } as unknown as CodexAuthManager;
+  const config = {
+    ...defaultSupervisorConfig(project),
+    goal: "Build all",
+    goalMode: true,
+    maxCycles: 2,
+    retryBaseSeconds: 0,
+    retryMaxSeconds: 0,
+    authManager,
+  };
+
+  const code = await new Supervisor(config, runner, async () => undefined).run();
+
+  assert.equal(code, 0);
+  assert.deepEqual(rotations, ["usage_limit"]);
+  assert.deepEqual(calls, [
+    { threadId: null, resume: false, prompt: "/goal Build all" },
+    { threadId: "thr_goal_usage", resume: true, prompt: "/goal Build all" },
+  ]);
+});
+
 test("operator stop without a message interrupts once and does not start a replacement turn", async () => {
   const project = await mkdtemp(join(tmpdir(), "supercodex-stop-"));
   await writeProjectState(project);
@@ -298,6 +378,55 @@ test("network transient failures retry same Codex thread ten times before fresh 
   assert.deepEqual(calls[10], { threadId: null, resume: false });
 });
 
+test("context window exceeded forces a fresh thread on the next retry", async () => {
+  const project = await mkdtemp(join(tmpdir(), "supercodex-context-window-fresh-"));
+  await writeProjectState(project);
+  const calls: Array<{ threadId?: string | null; resume?: boolean }> = [];
+  const runner: Runner = {
+    async run(input) {
+      calls.push({ threadId: input.threadId, resume: input.resume });
+      return calls.length === 1 ? failedResult("thr_context", "context_window_exceeded") : result("thr_fresh_after_context");
+    },
+  };
+  const config = { ...defaultSupervisorConfig(project), maxCycles: 2, retryBaseSeconds: 0, retryMaxSeconds: 0 };
+
+  const code = await new Supervisor(config, runner, async () => undefined).run();
+
+  assert.equal(code, 0);
+  assert.deepEqual(calls, [
+    { threadId: null, resume: false },
+    { threadId: null, resume: false },
+  ]);
+});
+
+test("context window exceeded in goal mode forces fresh thread and continues the same goal prompt", async () => {
+  const project = await mkdtemp(join(tmpdir(), "supercodex-goal-context-window-fresh-"));
+  await writeProjectState(project, { seedPrompt: false });
+  const calls: Array<{ threadId?: string | null; resume?: boolean; prompt?: string }> = [];
+  const runner: Runner = {
+    async run(input) {
+      calls.push({ threadId: input.threadId, resume: input.resume, prompt: input.prompt });
+      return calls.length === 1 ? failedResult("thr_goal_context", "context_window_exceeded") : result("thr_goal_context_fresh");
+    },
+  };
+  const config = {
+    ...defaultSupervisorConfig(project),
+    goal: "Build all",
+    goalMode: true,
+    maxCycles: 2,
+    retryBaseSeconds: 0,
+    retryMaxSeconds: 0,
+  };
+
+  const code = await new Supervisor(config, runner, async () => undefined).run();
+
+  assert.equal(code, 0);
+  assert.deepEqual(calls, [
+    { threadId: null, resume: false, prompt: "/goal Build all" },
+    { threadId: null, resume: false, prompt: "/goal Build all" },
+  ]);
+});
+
 test("remote pre-sampling compaction retries same Codex thread twenty times before fresh thread", async () => {
   const project = await mkdtemp(join(tmpdir(), "supercodex-remote-compaction-retry-"));
   await writeProjectState(project);
@@ -341,17 +470,7 @@ test("operator message on a done project runs as supervised intervention without
   const code = await new Supervisor(config, runner, async () => undefined).run();
 
   assert.equal(code, 0);
-  assert.match(capturedPrompt, /External Supervisor Prompt/);
-  assert.match(capturedPrompt, /Runtime Operator Intervention/);
-  assert.match(capturedPrompt, /AUTO_DEV_STATE\.json/);
-  assert.match(capturedPrompt, /Continuity and State Rule/);
-  assert.doesNotMatch(capturedPrompt, /FINAL_ACCEPTANCE_REPORT\.md/);
-  assert.doesNotMatch(capturedPrompt, /TRACEABILITY_MATRIX/);
-  assert.match(capturedPrompt, /Sub-Agent Collaboration Policy/);
-  assert.match(capturedPrompt, /disjoint implementation ownership/);
-  assert.doesNotMatch(capturedPrompt, /Do not replace PRD, do not rewrite PLAN into a new strategy, and do not replan completed or in-progress work\./);
-  assert.match(capturedPrompt, /kind: operator_intervention/);
-  assert.match(capturedPrompt, new RegExp(message));
+  assert.equal(capturedPrompt, message);
   const state = JSON.parse(await readFile(join(project, ".supercodex", "AUTO_DEV_STATE.json"), "utf8")) as { decision?: string };
   assert.equal(state.decision, "DELIVERED");
 });
@@ -418,7 +537,7 @@ test("fresh operator instruction does not scaffold FINAL_GOAL without /goal rese
   await assert.rejects(readFile(join(project, ".supercodex", "FINAL_GOAL.md"), "utf8"));
 });
 
-test("/goal reset still injects the supervisor prompt for the goal loop", async () => {
+test("/goal runs through app-server goal mode without scaffolded supervisor prompt injection", async () => {
   const project = await mkdtemp(join(tmpdir(), "supercodex-goal-prompt-"));
   const message = "把整个产品做完";
   let capturedPrompt = "";
@@ -432,7 +551,6 @@ test("/goal reset still injects the supervisor prompt for the goal loop", async 
     ...defaultSupervisorConfig(project),
     goal: message,
     goalMode: true,
-    resetSupercodexState: true,
     maxCycles: 1,
     retryBaseSeconds: 0,
     retryMaxSeconds: 0,
@@ -442,13 +560,11 @@ test("/goal reset still injects the supervisor prompt for the goal loop", async 
   const code = await new Supervisor(config, runner, async () => undefined).run();
 
   assert.equal(code, 0);
-  assert.match(capturedPrompt, /External Supervisor Prompt/);
-  assert.match(capturedPrompt, /goal_mode: active/);
-  assert.match(capturedPrompt, /FINAL_GOAL\.md/);
-  assert.match(await readFile(join(project, ".supercodex", "FINAL_GOAL.md"), "utf8"), new RegExp(message));
+  assert.equal(capturedPrompt, `/goal ${message}`);
+  await assert.rejects(readFile(join(project, ".supercodex", "FINAL_GOAL.md"), "utf8"));
 });
 
-async function writeProjectState(project: string): Promise<void> {
+async function writeProjectState(project: string, options: { seedPrompt?: boolean } = {}): Promise<void> {
   await import("node:fs/promises").then(async ({ mkdir }) => {
     await mkdir(join(project, ".supercodex", "runtime"), { recursive: true });
     await mkdir(join(project, ".supercodex"), { recursive: true });
@@ -469,9 +585,12 @@ async function writeProjectState(project: string): Promise<void> {
   for (const doc of ["FINAL_GOAL.md", "PRD.md", "ARCHITECTURE.md", "PLAN.md"]) {
     await writeFile(join(project, ".supercodex", doc), "# doc\n", "utf8");
   }
+  if (options.seedPrompt !== false) {
+    await requestSteer(project, "continue", "default");
+  }
 }
 
-async function writePlanCompleteProjectState(project: string): Promise<void> {
+async function writePlanCompleteProjectState(project: string, options: { seedPrompt?: boolean } = {}): Promise<void> {
   await import("node:fs/promises").then(async ({ mkdir }) => {
     await mkdir(join(project, ".supercodex", "runtime"), { recursive: true });
     await mkdir(join(project, ".supercodex"), { recursive: true });
@@ -494,6 +613,9 @@ async function writePlanCompleteProjectState(project: string): Promise<void> {
     await writeFile(join(project, ".supercodex", doc), "# doc\n", "utf8");
   }
   await writeFile(join(project, ".supercodex", "PLAN.md"), donePlan, "utf8");
+  if (options.seedPrompt !== false) {
+    await requestSteer(project, "continue", "default");
+  }
 }
 
 async function writeDoneProjectState(project: string): Promise<void> {

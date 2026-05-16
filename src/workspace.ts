@@ -1,6 +1,5 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, resolve, sep } from "node:path";
 import { supervisorDataRoot } from "./settings.js";
 import type { JsonObject, PlanTask, ProjectSnapshot, WorkItem } from "./types.js";
 import {
@@ -74,10 +73,6 @@ export async function ensureScaffold(projectInput: string, goal = "", options: {
   const project = resolve(projectInput);
   const created: string[] = [];
 
-  const projectAgentsPath = await ensureProjectAgentsMd(project);
-  if (projectAgentsPath) {
-    created.push(projectAgentsPath);
-  }
   if (await ensureSupercodexGitignore(project)) {
     created.push(join(project, ".gitignore"));
   }
@@ -128,12 +123,6 @@ export async function resetSupercodexGoalState(projectInput: string, goal: strin
 
 export async function ensureSupervisorGitignore(project: string): Promise<boolean> {
   return ensureSupercodexGitignore(project);
-}
-
-export async function ensureProjectAgentsMd(projectInput: string): Promise<string | null> {
-  const project = resolve(projectInput);
-  const target = join(project, "AGENTS.md");
-  return (await writeTextIfMissing(target, await readProjectAgentsTemplate())) ? target : null;
 }
 
 export async function ensureSupercodexGitignore(project: string): Promise<boolean> {
@@ -230,7 +219,7 @@ export function chooseNextWork(snapshot: ProjectSnapshot): WorkItem {
   if (criticalMissing.length > 0) {
     return {
       kind: "supplement_docs",
-      title: "补齐 AGENTS.md 关键文件",
+      title: "补齐 SuperCodex 关键状态文件",
       reason: `Missing critical required files: ${criticalMissing.join(", ")}`,
       source: "docs",
     };
@@ -238,7 +227,7 @@ export function chooseNextWork(snapshot: ProjectSnapshot): WorkItem {
   if (snapshot.missingDocs.length > 0) {
     return {
       kind: "supplement_docs",
-      title: "补齐 AGENTS.md 必需文件",
+      title: "补齐 SuperCodex 必需状态文件",
       reason: `Missing required files: ${snapshot.missingDocs.join(", ")}`,
       source: "docs",
     };
@@ -255,13 +244,13 @@ export function chooseNextWork(snapshot: ProjectSnapshot): WorkItem {
     return {
       kind: "stage_gate",
       title: "进入 Phase 3 最终验收与交付",
-      reason: "All parsed PLAN tasks are checked; AGENTS.md requires Phase 3 final acceptance before delivery.",
+      reason: "All parsed PLAN tasks are checked; Phase 3 final acceptance is still required before delivery.",
       source: "final-acceptance",
     };
   }
   return {
     kind: "bootstrap",
-    title: "建立 AGENTS.md 轻量治理规划",
+    title: "初始化 SuperCodex 运行状态",
     reason: "No actionable AUTO_DEV_STATE or PLAN tasks were found.",
     source: "bootstrap",
   };
@@ -308,7 +297,7 @@ function chooseFromAutoDevState(autoDevState: JsonObject, planTasks: PlanTask[],
     return {
       kind: "stage_gate",
       title: "执行 Phase 3 交付与 PR",
-      reason: "Final acceptance passed; AGENTS.md requires Git delivery closure.",
+      reason: "Final acceptance passed; Git delivery closure is still required.",
       source: "auto-dev-state",
     };
   }
@@ -338,7 +327,7 @@ function chooseFromAutoDevState(autoDevState: JsonObject, planTasks: PlanTask[],
     return {
       kind: "stage_gate",
       title: "进入 Phase 3 最终验收与交付",
-      reason: "PLAN checklist is exhausted; AGENTS.md requires Phase 3 final acceptance before delivery.",
+      reason: "PLAN checklist is exhausted; Phase 3 final acceptance is still required before delivery.",
       source: "final-acceptance",
     };
   }
@@ -577,50 +566,8 @@ Goal: ${goal || "Not provided yet."}
 - [ ] Task 4.1: Define and implement the next PRD-backed capability slice
 `;
     default:
-      return `# ${doc.replaceAll("_", " ").replace(/\.md$/i, "")}\n\nCreated by SuperCodex AGENTS.md scaffold.\n`;
+      return `# ${doc.replaceAll("_", " ").replace(/\.md$/i, "")}\n\nCreated by SuperCodex scaffold.\n`;
   }
-}
-
-async function readProjectAgentsTemplate(): Promise<string> {
-  for (const candidate of projectAgentsTemplateCandidates()) {
-    const content = await readText(candidate, "");
-    if (content.trim()) {
-      return content.endsWith("\n") ? content : `${content}\n`;
-    }
-  }
-  return fallbackProjectAgentsTemplate();
-}
-
-function projectAgentsTemplateCandidates(): string[] {
-  const moduleDir = dirname(fileURLToPath(import.meta.url));
-  return [
-    process.env.SUPERCODEX_AGENTS_TEMPLATE?.trim() ?? "",
-    join(moduleDir, "..", "AGENTS.md"),
-    join(moduleDir, "..", "..", "AGENTS.md"),
-  ].filter(Boolean);
-}
-
-function fallbackProjectAgentsTemplate(): string {
-  return `# AGENTS.md - SuperCodex Project Instructions
-
-This project is managed by SuperCodex using the lightweight AGENTS.md protocol. Before doing work, Codex must read \`.supercodex/AUTO_DEV_STATE.json\`, \`.supercodex/FINAL_GOAL.md\`, \`.supercodex/PRD.md\`, \`.supercodex/ARCHITECTURE.md\`, \`.supercodex/PLAN.md\`, and git status, then continue from the recorded Phase and the plan itself.
-
-Use available sub-agent, worker, explorer, tester, or reviewer capabilities when they materially help: independent exploration, disjoint implementation ownership, repeated failure analysis, parallel testing, code review, security review, or final-goal coverage review. The main agent remains responsible for integration, verification, and required doc updates.
-
-Required durable files:
-
-- \`.supercodex/AUTO_DEV_STATE.json\`
-- \`.supercodex/FINAL_GOAL.md\`
-- \`.supercodex/PRD.md\`
-- \`.supercodex/ARCHITECTURE.md\`
-- \`.supercodex/PLAN.md\`
-
-\`.supercodex/AUTO_DEV_STATE.json\` is the machine-readable scheduling source. \`.supercodex/FINAL_GOAL.md\` stores the original user input, final clarified goal, clarification answers, and assumptions. Markdown files are FINAL_GOAL, PRD, ARCHITECTURE, and PLAN. SuperCodex may record runtime logs automatically.
-
-Phase 1 contains blocking clarification, PRD, architecture, and PLAN creation. After the Phase 1 clarification step is closed, fix errors autonomously, keep AUTO_DEV_STATE valid JSON through atomic writes, and deliver after AUTO_DEV_STATE.acceptance.decision says PASS and Phase 3 delivery is complete.
-
-\`.supercodex/PLAN.md\` is Codex's execution plan and progress record. AUTO_DEV_STATE remains the Phase-level scheduling state. When the PLAN is exhausted, SuperCodex must run the full-project Phase 3 final acceptance before delivery.
-`;
 }
 
 function normalizeAutoDevState(autoDevState: JsonObject): JsonObject {

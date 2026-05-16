@@ -30,7 +30,7 @@ export const slashCommandSpecs: SlashCommandSpec[] = [
   {
     name: "goal",
     usage: "/goal <prompt>",
-    description: "Reset SuperCodex state and save the prompt as FINAL_GOAL.",
+    description: "Start app-server goal mode with the provided objective.",
     insertText: "/goal ",
     requiresArgument: true,
   },
@@ -201,6 +201,6 @@ export function slashHelpText(): string {
     "Commands:",
     ...slashCommandSpecs.map((command) => `  ${command.usage.padEnd(40)} ${command.description}`),
     "",
-    "Plain text sends a normal instruction. Use /goal <prompt> to reset state and save a new FINAL_GOAL.",
+    "Plain text sends a normal instruction. Use /goal <prompt> to set an app-server goal objective.",
   ].join("\n");
 }

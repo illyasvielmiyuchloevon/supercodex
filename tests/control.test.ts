@@ -200,7 +200,7 @@ test("managed tui parses /new and its Codex-style alias as a fresh session reque
   assert.equal(parseNewRequest("/start default"), null);
 });
 
-test("managed tui parses /goal as the explicit final-goal reset command", () => {
+test("managed tui parses /goal as an explicit app-server goal-mode command", () => {
   assert.equal(parseGoalRequest(""), null);
   assert.equal(parseGoalRequest("/goal"), "");
   assert.equal(parseGoalRequest("/goal Build the whole product"), "Build the whole product");

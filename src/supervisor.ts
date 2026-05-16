@@ -2,15 +2,12 @@ import { resolve } from "node:path";
 import { CodexAuthManager } from "./auth.js";
 import { defaultAppServerOptions, AppServerRunner, type AppServerOptions } from "./app-server.js";
 import { markControlHandled, readPendingControls } from "./control.js";
-import { buildPrompt } from "./prompts.js";
 import {
   chooseNextWork,
   ensureSupervisorGitignore,
-  ensureScaffold,
   loadSnapshotForRun,
   recordCheckpoint,
   recordProgress,
-  resetSupercodexGoalState,
   saveSupervisorSession,
 } from "./workspace.js";
 import {
@@ -140,21 +137,15 @@ export class Supervisor {
   async run(): Promise<number> {
     const project = resolve(this.config.project);
     const runId = sanitizeRunId(this.config.runId);
-    if (this.config.resetSupercodexState) {
-      await resetSupercodexGoalState(project, this.config.goal);
-    } else if (this.config.skipScaffold) {
-      await ensureSupervisorGitignore(project);
-    } else {
-      await ensureScaffold(project, this.config.goal, { goalMode: Boolean(this.config.goalMode) });
-    }
+    await ensureSupervisorGitignore(project);
 
-    let previousResult: CodexRunResult | null = null;
     let consecutiveFailures = 0;
     let consecutiveNetworkTransientFailures = 0;
     let consecutiveRemoteCompactionFailures = 0;
     let sameSessionFailures = 0;
     let consecutiveAuthFailures = 0;
     let pendingOperatorMessage: string | null = null;
+    let retainedPromptForRetry: string | null = null;
 
     for (let cycle = 1; cycle <= this.config.maxCycles; cycle++) {
       pendingOperatorMessage = joinOperatorMessages(pendingOperatorMessage, await this.handleQueuedControlsBeforeTurn(project, runId));
@@ -162,11 +153,14 @@ export class Supervisor {
 
       const snapshot = await loadSnapshotForRun(project, runId);
       const selectedWork = chooseNextWork(snapshot);
+      const goalPrompt = cycle === 1 ? goalModePrompt(this.config) : null;
       const hasOperatorMessage = Boolean(pendingOperatorMessage?.trim());
+      const hasGoalPrompt = Boolean(goalPrompt);
+      const hasRetainedPrompt = Boolean(retainedPromptForRetry?.trim());
       const work = hasOperatorMessage && (this.config.operatorIntervention || shouldPrioritizeOperatorIntervention(selectedWork))
         ? operatorInterventionWork(selectedWork)
         : selectedWork;
-      if (work.kind === "done") {
+      if (work.kind === "done" && !hasOperatorMessage && !hasGoalPrompt && !hasRetainedPrompt) {
         await recordProgress(project, "done", "Project state is marked done; SuperCodex stopped.");
         return 0;
       }
@@ -183,17 +177,13 @@ export class Supervisor {
       const resume = shouldResumeStoredThread(sessionState, forceFresh);
       const threadId = forceFresh ? null : storedThreadId;
 
-      const currentOperatorMessage: string | null = pendingOperatorMessage;
-      const prompt = shouldSendRawOperatorPrompt(this.config, work, currentOperatorMessage)
-        ? currentOperatorMessage?.trim() ?? ""
-        : buildPrompt({
-            snapshot,
-            work,
-            previousResult,
-            forceFreshSession: forceFresh,
-            operatorMessage: currentOperatorMessage,
-          });
+      const currentOperatorMessage: string | null = pendingOperatorMessage?.trim() ? pendingOperatorMessage.trim() : null;
+      const prompt: string | null = currentOperatorMessage ?? goalPrompt ?? retainedPromptForRetry;
       pendingOperatorMessage = null;
+      if (!prompt) {
+        await recordProgress(project, "idle-no-input", "No user or /goal prompt is pending; SuperCodex stopped without sending an injected prompt.");
+        return 0;
+      }
 
       await recordProgress(
         project,
@@ -252,35 +242,35 @@ export class Supervisor {
 
       if (result.classification === "operator_interrupt") {
         const interruptMessage = operatorInterruptMessage(result);
-        previousResult = result;
         consecutiveFailures = 0;
         consecutiveNetworkTransientFailures = 0;
         consecutiveRemoteCompactionFailures = 0;
         sameSessionFailures = 0;
         consecutiveAuthFailures = 0;
+        retainedPromptForRetry = null;
         if (!interruptMessage?.trim()) {
           await recordProgress(project, "operator-stop", "Codex turn was stopped by the operator; SuperCodex will not start a replacement turn automatically.");
           await checkpoint(project, work, command, "operator_interrupt", "Stopped current Codex turn after operator stop.", "Run /start or provide a new instruction when you want to continue.");
           return result.returnCode || 130;
         }
         pendingOperatorMessage = interruptMessage;
+        retainedPromptForRetry = interruptMessage;
         await recordProgress(project, "operator-interrupt", "Codex turn was interrupted; retrying with the supplied intervention prompt.");
         await checkpoint(project, work, command, "operator_interrupt", "Stopped current Codex turn after operator interrupt.", "Resume with the operator intervention prompt.");
         continue;
       }
 
       if (isRunOk(result)) {
-        previousResult = null;
         consecutiveFailures = 0;
         consecutiveNetworkTransientFailures = 0;
         consecutiveRemoteCompactionFailures = 0;
         sameSessionFailures = 0;
         consecutiveAuthFailures = 0;
+        retainedPromptForRetry = null;
         await checkpoint(project, work, command, "None recorded by SuperCodex.", `SuperCodex cycle ${cycle} completed successfully.`, "Reload state and select the next unfinished task or gate.");
         continue;
       }
 
-      previousResult = result;
       if (result.classification === "remote_compaction_failed") {
         consecutiveRemoteCompactionFailures++;
         consecutiveNetworkTransientFailures = 0;
@@ -304,6 +294,7 @@ export class Supervisor {
             `Remote pre-sampling compaction failed ${consecutiveRemoteCompactionFailures}/${remoteCompactionRetryLimit(this.config)} times. SuperCodex will keep run '${runId}' and continue with a fresh Codex thread after ${delay.toFixed(1)}s.`,
           );
           consecutiveRemoteCompactionFailures = 0;
+          retainedPromptForRetry = prompt;
           await this.sleeper(delay);
           continue;
         }
@@ -312,6 +303,7 @@ export class Supervisor {
           "remote-compaction-retry",
           `Remote pre-sampling compaction failed ${consecutiveRemoteCompactionFailures}/${remoteCompactionRetryLimit(this.config)}; retrying the same Codex thread after ${delay.toFixed(1)}s.`,
         );
+        retainedPromptForRetry = prompt;
         await this.sleeper(delay);
         continue;
       }
@@ -338,6 +330,7 @@ export class Supervisor {
             `Network transient failure reached ${consecutiveNetworkTransientFailures}/${networkTransientRetryLimit(this.config)}. SuperCodex will keep run '${runId}' and continue with a fresh Codex thread after ${delay.toFixed(1)}s.`,
           );
           consecutiveNetworkTransientFailures = 0;
+          retainedPromptForRetry = prompt;
           await this.sleeper(delay);
           continue;
         }
@@ -346,6 +339,32 @@ export class Supervisor {
           "network-transient-retry",
           `Network transient failure ${consecutiveNetworkTransientFailures}/${networkTransientRetryLimit(this.config)}; retrying the same Codex thread after ${delay.toFixed(1)}s.`,
         );
+        retainedPromptForRetry = prompt;
+        await this.sleeper(delay);
+        continue;
+      }
+      if (result.classification === "context_window_exceeded") {
+        consecutiveRemoteCompactionFailures = 0;
+        consecutiveNetworkTransientFailures = 0;
+        consecutiveFailures = 0;
+        sameSessionFailures = 0;
+        consecutiveAuthFailures = 0;
+        await checkpoint(
+          project,
+          work,
+          command,
+          result.classification,
+          `Supervisor cycle ${cycle} hit context window exceeded.`,
+          "Start a fresh Codex thread in the same SuperCodex run and replay the retained prompt/work item.",
+        );
+        await patchSupervisorSettings(project, { forceFreshNext: true }, runId);
+        const delay = Math.min(this.config.retryMaxSeconds, this.config.retryBaseSeconds);
+        await recordProgress(
+          project,
+          "context-window-escalate",
+          `Context window exceeded. SuperCodex will keep run '${runId}' and continue with a fresh Codex thread after ${delay.toFixed(1)}s.`,
+        );
+        retainedPromptForRetry = prompt;
         await this.sleeper(delay);
         continue;
       }
@@ -378,6 +397,7 @@ export class Supervisor {
         }
         consecutiveFailures = 0;
         sameSessionFailures = 0;
+        retainedPromptForRetry = prompt;
         const delay = Math.min(this.config.retryMaxSeconds, this.config.retryBaseSeconds);
         await recordProgress(project, "auth-rotate", `Codex auth failure '${result.classification}'; switched to auth account '${nextAccount}' and will retry after ${delay.toFixed(1)}s.`);
         this.log(`[supercodex] ${result.classification}; switched Codex auth to ${nextAccount}`);
@@ -399,11 +419,13 @@ export class Supervisor {
         );
         consecutiveFailures = 0;
         sameSessionFailures = 0;
+        retainedPromptForRetry = prompt;
         await this.sleeper(delay);
         continue;
       }
       const delay = Math.min(this.config.retryMaxSeconds, this.config.retryBaseSeconds * 2 ** Math.max(0, consecutiveFailures - 1));
       await recordProgress(project, "retry", `Retrying after ${delay.toFixed(1)}s due to ${result.classification}.`);
+      retainedPromptForRetry = prompt;
       await this.sleeper(delay);
     }
 
@@ -533,13 +555,20 @@ function operatorInterventionWork(previousWork: WorkItem): WorkItem {
   };
 }
 
-function shouldSendRawOperatorPrompt(config: SupervisorConfig, work: WorkItem, operatorMessage: string | null): boolean {
-  return work.kind === "operator_intervention" && Boolean(operatorMessage?.trim()) && Boolean(config.operatorIntervention) && Boolean(config.skipScaffold) && !Boolean(config.goalMode);
-}
-
 function operatorInterruptMessage(result: CodexRunResult): string | null {
   const message = result.operatorMessage?.trim();
   return message ? message : null;
+}
+
+function goalModePrompt(config: SupervisorConfig): string | null {
+  if (!config.goalMode) {
+    return null;
+  }
+  const objective = config.goal.trim();
+  if (!objective) {
+    return null;
+  }
+  return `/goal ${objective}`;
 }
 
 export function resumableThreadId(sessionState: Record<string, unknown>): string | null {

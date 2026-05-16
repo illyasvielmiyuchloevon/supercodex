@@ -22,11 +22,58 @@ test("classifyAppServerFailure recognizes remote pre-sampling compaction failure
   assert.equal(classifyAppServerFailure({ error: { message: text, codexErrorInfo: "other" } }), "remote_compaction_failed");
 });
 
+test("classifyAppServerFailure promotes deterministic remote compaction overflow to context window exceeded", () => {
+  const text = [
+    "codex_core::compact_remote: remote compaction failed",
+    "all_history_items_model_visible_bytes=2513704",
+    "estimated_tokens_of_items_added_since_last_successful_api_response=253095",
+    "model_context_window_tokens=Some(258400)",
+    "failing_compaction_request_model_visible_bytes=2535051",
+  ].join("\n");
+
+  assert.equal(classifyAppServerFailure({ error: { message: text, codexErrorInfo: "other" } }), "context_window_exceeded");
+});
+
 test("classifyAppServerFailure keeps text fallbacks for session and usage failures", () => {
   assert.equal(classifyAppServerFailure("thread 123 not found"), "session_not_found");
   assert.equal(classifyAppServerFailure("You've hit your usage limit"), "usage_limit");
   assert.equal(classifyAppServerFailure("401 Unauthorized: token_invalidated"), "unauthorized");
   assert.equal(classifyAppServerFailure("refresh_token_reused"), "unauthorized");
+});
+
+test("runner failure classification promotes usage-limit hints from stderr over remote compaction fallback", () => {
+  const runner = new AppServerRunner();
+  const classify = (runner as unknown as {
+    classifyFailureWithDiagnostics(primary: unknown, stderrText: string): string;
+  }).classifyFailureWithDiagnostics.bind(runner);
+
+  assert.equal(
+    classify(
+      { message: "Failed to run pre-sampling compact" },
+      "https://chatgpt.com/codex/settings/usage to purchase more credits or try again later.",
+    ),
+    "usage_limit",
+  );
+});
+
+test("runner failure classification keeps nested usageLimitExceeded code when diagnostics are wrapped", () => {
+  const runner = new AppServerRunner();
+  const classify = (runner as unknown as {
+    classifyFailureWithDiagnostics(primary: unknown, stderrText: string): string;
+  }).classifyFailureWithDiagnostics.bind(runner);
+
+  const primary = {
+    error: {
+      message: "Error running remote compact task",
+      codexErrorInfo: "usageLimitExceeded",
+    },
+  };
+  const stderr = [
+    "codex_core::compact_remote: remote compaction failed",
+    "model_context_window_tokens=Some(258400)",
+    "failing_compaction_request_model_visible_bytes=1027309",
+  ].join("\n");
+  assert.equal(classify(primary, stderr), "usage_limit");
 });
 
 test("waitForTurnCompletion accepts a completion event observed before waiter registration", async () => {
@@ -133,6 +180,67 @@ test("waitForTurnCompletion returns stderr diagnostics when app-server exits mid
     setOperator() {},
   });
   assert.equal(classifyAppServerFailure(result), "unauthorized");
+});
+
+test("waitForTurnCompletion fast-fails usage-limit compaction loops and interrupts turn", async () => {
+  const runner = new AppServerRunner(undefined, null);
+  const wait = (runner as unknown as {
+    waitForTurnCompletion(input: {
+      client: {
+        onNotification(handler: (message: unknown) => void): void;
+        request(method: string, params: unknown): Promise<unknown>;
+        hasExited(): boolean;
+        exitSummary(): string;
+        stderrText(): string;
+        idleSeconds(): number;
+        lastActivitySummary(): string;
+      };
+      project: string;
+      threadId: string;
+      turnId: string;
+      initialCompletion: unknown;
+      setOperator(message: string | null, id: string | null): void;
+    }): Promise<Record<string, unknown>>;
+  }).waitForTurnCompletion.bind(runner);
+
+  const requests: string[] = [];
+  const result = await wait({
+    client: {
+      onNotification() {},
+      async request(method) {
+        requests.push(method);
+        return {};
+      },
+      hasExited() {
+        return false;
+      },
+      exitSummary() {
+        return "still running";
+      },
+      stderrText() {
+        return [
+          "codex_core::session::turn: Failed to run pre-sampling compact",
+          '[codex error] {"error":{"message":"Error running remote compact task: You\'ve hit your usage limit.","codexErrorInfo":"usageLimitExceeded"}}',
+        ].join("\n");
+      },
+      idleSeconds() {
+        return 0;
+      },
+      lastActivitySummary() {
+        return "stderr";
+      },
+    },
+    project: ".",
+    threadId: "thread-usage",
+    turnId: "turn-usage",
+    initialCompletion: null,
+    setOperator() {},
+  });
+
+  const turn = result.turn as { status?: string; error?: { message?: string } };
+  assert.equal(turn.status, "failed");
+  assert.match(turn.error?.message ?? "", /usage limit/i);
+  assert.deepEqual(requests, ["turn/interrupt"]);
 });
 
 test("waitForTurnCompletion can interrupt an explicitly configured idle turn", async () => {
@@ -281,6 +389,150 @@ test("thread/resume params reopen the saved Codex app-server thread", () => {
   assert.equal(params.persistExtendedHistory, true);
   assert.equal(params.sandbox, "danger-full-access");
   assert.equal(params.approvalPolicy, "never");
+});
+
+test("goal-mode retry on a resumed thread continues without replaying /goal prompt", async () => {
+  const runner = new AppServerRunner(undefinedDefaultOptions(), null);
+  const calls: Array<{ method: string; params?: unknown }> = [];
+  const input = await (
+    runner as unknown as {
+      turnStartInputForThread(
+        client: { request(method: string, params?: unknown): Promise<Record<string, unknown>> },
+        input: { threadId: string; prompt: string; resume: boolean },
+      ): Promise<Array<Record<string, unknown>>>;
+    }
+  ).turnStartInputForThread(
+    {
+      async request(method, params) {
+        calls.push({ method, params });
+        if (method === "thread/goal/get") {
+          return { goal: { threadId: "thr_saved", objective: "Build all", status: "active" } };
+        }
+        throw new Error(`unexpected method ${method}`);
+      },
+    },
+    { threadId: "thr_saved", prompt: "/goal Build all", resume: true },
+  );
+
+  assert.deepEqual(calls, [{ method: "thread/goal/get", params: { threadId: "thr_saved" } }]);
+  assert.deepEqual(input, []);
+});
+
+test("goal-mode retry reactivates paused goal before continuing", async () => {
+  const runner = new AppServerRunner(undefinedDefaultOptions(), null);
+  const calls: Array<{ method: string; params?: unknown }> = [];
+  const input = await (
+    runner as unknown as {
+      turnStartInputForThread(
+        client: { request(method: string, params?: unknown): Promise<Record<string, unknown>> },
+        input: { threadId: string; prompt: string; resume: boolean },
+      ): Promise<Array<Record<string, unknown>>>;
+    }
+  ).turnStartInputForThread(
+    {
+      async request(method, params) {
+        calls.push({ method, params });
+        if (method === "thread/goal/get") {
+          return { goal: { threadId: "thr_saved", objective: "Build all", status: "paused" } };
+        }
+        if (method === "thread/goal/set") {
+          return { goal: { threadId: "thr_saved", objective: "Build all", status: "active" } };
+        }
+        throw new Error(`unexpected method ${method}`);
+      },
+    },
+    { threadId: "thr_saved", prompt: "/goal Build all", resume: true },
+  );
+
+  assert.deepEqual(calls, [
+    { method: "thread/goal/get", params: { threadId: "thr_saved" } },
+    { method: "thread/goal/set", params: { threadId: "thr_saved", status: "active" } },
+  ]);
+  assert.deepEqual(input, []);
+});
+
+test("goal-mode retry falls back to /goal prompt replay when goal API is unavailable", async () => {
+  const runner = new AppServerRunner(undefinedDefaultOptions(), null);
+  const calls: Array<{ method: string; params?: unknown }> = [];
+  const input = await (
+    runner as unknown as {
+      turnStartInputForThread(
+        client: { request(method: string, params?: unknown): Promise<Record<string, unknown>> },
+        input: { threadId: string; prompt: string; resume: boolean },
+      ): Promise<Array<Record<string, unknown>>>;
+    }
+  ).turnStartInputForThread(
+    {
+      async request(method, params) {
+        calls.push({ method, params });
+        throw new Error('{"code":-32601,"message":"Method not found"}');
+      },
+    },
+    { threadId: "thr_saved", prompt: "/goal Build all", resume: true },
+  );
+
+  assert.deepEqual(calls, [{ method: "thread/goal/get", params: { threadId: "thr_saved" } }]);
+  assert.deepEqual(input, [{ type: "text", text: "/goal Build all", text_elements: [] }]);
+});
+
+test("waitForGoalContinuationTurn attaches to an auto-resumed in-progress goal turn", async () => {
+  const runner = new AppServerRunner(undefinedDefaultOptions(), null);
+  let reads = 0;
+  const turnId = await (
+    runner as unknown as {
+      waitForGoalContinuationTurn(
+        client: { request(method: string, params?: unknown): Promise<Record<string, unknown>> },
+        threadId: string,
+        timeoutMs?: number,
+        intervalMs?: number,
+      ): Promise<string | null>;
+    }
+  ).waitForGoalContinuationTurn(
+    {
+      async request(method, params) {
+        assert.equal(method, "thread/read");
+        assert.deepEqual(params, { threadId: "thr_saved", includeTurns: true });
+        reads += 1;
+        if (reads < 2) {
+          return { thread: { turns: [] } };
+        }
+        return { thread: { turns: [{ id: "turn_goal", status: "inProgress" }] } };
+      },
+    },
+    "thr_saved",
+    50,
+    0,
+  );
+
+  assert.equal(turnId, "turn_goal");
+  assert.equal(reads >= 2, true);
+});
+
+test("waitForGoalContinuationTurn returns null when no in-progress turn appears", async () => {
+  const runner = new AppServerRunner(undefinedDefaultOptions(), null);
+  const turnId = await (
+    runner as unknown as {
+      waitForGoalContinuationTurn(
+        client: { request(method: string, params?: unknown): Promise<Record<string, unknown>> },
+        threadId: string,
+        timeoutMs?: number,
+        intervalMs?: number,
+      ): Promise<string | null>;
+    }
+  ).waitForGoalContinuationTurn(
+    {
+      async request(method, params) {
+        assert.equal(method, "thread/read");
+        assert.deepEqual(params, { threadId: "thr_saved", includeTurns: true });
+        return { thread: { turns: [{ id: "turn_done", status: "completed" }] } };
+      },
+    },
+    "thr_saved",
+    20,
+    0,
+  );
+
+  assert.equal(turnId, null);
 });
 
 function undefinedDefaultOptions() {

@@ -8,7 +8,7 @@ import { defaultAppServerOptions, resolveCodexInvocation, type AppServerOptions 
 import { clearControl, readControl, requestInterrupt } from "./control.js";
 import { readPendingInteractions } from "./interactions.js";
 import { Supervisor, type SupervisorConfig, shouldResumeStoredThread, shouldStartFreshPlanReviewThread, resumableThreadId } from "./supervisor.js";
-import { chooseNextWork, ensureProjectAgentsMd, ensureScaffold, ensureSupercodexGitignore, loadSnapshotForRun, loadSupervisorRuntime } from "./workspace.js";
+import { chooseNextWork, ensureScaffold, ensureSupercodexGitignore, loadSnapshotForRun, loadSupervisorRuntime } from "./workspace.js";
 import { parseReasoningEffort, readSupervisorSettings, sanitizeRunId } from "./settings.js";
 import { runAttach } from "./tui.js";
 
@@ -301,7 +301,6 @@ function appServerOptionsFromArgs(args: ParsedArgs): AppServerOptions {
 
 async function projectFromArgs(args: ParsedArgs): Promise<string> {
   const project = resolve(stringFlag(args, "project", "."));
-  await ensureProjectAgentsMd(project);
   await ensureSupercodexGitignore(project);
   return project;
 }
@@ -438,7 +437,7 @@ function printHelp(): void {
 Commands:
   supercodex  Start the interactive TUI in the current directory
   tui         Start the interactive TUI explicitly
-  init        Supplement required AGENTS.md .supercodex files without overwriting PRD/PLAN
+  init        Supplement .supercodex runtime/state files without injecting AGENTS.md
   status      Show recovered state and next work
   doctor      Check Codex app-server, git, scaffold, and auth availability
   run         Run until done by default; use --max-cycles to cap cycles

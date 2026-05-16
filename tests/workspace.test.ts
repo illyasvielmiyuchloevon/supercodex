@@ -18,7 +18,7 @@ test("ensureScaffold preserves existing PRD and PLAN while adding gitignore rule
   assert.match(await readFile(join(project, ".gitignore"), "utf8"), /^\.supercodex\/$/m);
 });
 
-test("ensureScaffold includes lightweight AGENTS.md required files", async () => {
+test("ensureScaffold creates lightweight required state files", async () => {
   const project = await mkdtemp(join(tmpdir(), "supercodex-final-files-"));
 
   await ensureScaffold(project, "goal");
@@ -88,22 +88,14 @@ test("loadSnapshot does not infer goal mode from FINAL_GOAL without an explicit 
   assert.equal(snapshot.state.phase, "PHASE_2_DEVELOPMENT_QUALITY");
 });
 
-test("ensureScaffold creates project AGENTS.md once and preserves existing project guidance", async () => {
+test("ensureScaffold does not inject or create project AGENTS.md", async () => {
   const project = await mkdtemp(join(tmpdir(), "supercodex-agents-"));
+  const agentsPath = join(project, "AGENTS.md");
 
   const created = await ensureScaffold(project, "goal");
-  const agentsPath = join(project, "AGENTS.md");
-  const generatedAgents = await readFile(agentsPath, "utf8");
 
-  assert.ok(created.includes(agentsPath));
-  assert.match(generatedAgents, /AGENTS\.md/);
-  assert.match(generatedAgents, /SuperCodex|supercodex|Codex/);
-
-  await writeFile(agentsPath, "# Custom Project Rules\n", "utf8");
-  const secondCreated = await ensureScaffold(project, "new goal");
-
-  assert.equal(await readFile(agentsPath, "utf8"), "# Custom Project Rules\n");
-  assert.ok(!secondCreated.includes(agentsPath));
+  assert.ok(!created.includes(agentsPath));
+  await assert.rejects(readFile(agentsPath, "utf8"));
 });
 
 test("ensureScaffold ignores legacy .agent and external docs", async () => {

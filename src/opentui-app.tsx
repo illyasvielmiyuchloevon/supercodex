@@ -1367,7 +1367,7 @@ function OpenTuiRuntime(props: {
   onMount(() => {
     transcript.appendLocal(
       props.mode === "managed"
-        ? "OpenTUI managed frontend ready. Type a message, /goal <prompt> to reset FINAL_GOAL, or /start [run-id] to resume."
+        ? "OpenTUI managed frontend ready. Type a message, /goal <prompt> to start app-server goal mode, or /start [run-id] to resume."
         : "OpenTUI attach frontend ready. Type an intervention or / command.",
     );
     publishTranscript();
@@ -1417,7 +1417,6 @@ function OpenTuiRuntime(props: {
           runId: runId(),
           goalOrInstruction: value,
           operatorIntervention: true,
-          skipScaffold: true,
           authManager: props.authManager,
           appServerOptions: props.appServerOptions,
           transcript,
@@ -1434,7 +1433,6 @@ function OpenTuiRuntime(props: {
           runId: runId(),
           goalOrInstruction: "",
           operatorIntervention: true,
-          skipScaffold: true,
           authManager: props.authManager,
           appServerOptions: props.appServerOptions,
           transcript,
@@ -1561,7 +1559,6 @@ function OpenTuiRuntime(props: {
       runId: nextRunId,
       goalOrInstruction: value,
       operatorIntervention: true,
-      skipScaffold: true,
       authManager: props.authManager,
       appServerOptions: props.appServerOptions,
       transcript,
@@ -1573,7 +1570,7 @@ function OpenTuiRuntime(props: {
   const startGoalSession = async (prompt = "") => {
     closePicker();
     if (props.mode !== "managed") {
-      appendLocal(transcript, publishTranscript, "Attach mode cannot start a final-goal run. Use managed TUI for /goal.");
+      appendLocal(transcript, publishTranscript, "Attach mode cannot start goal mode. Use managed TUI for /goal.");
       return;
     }
     if (supervisorTask()) {
@@ -1582,7 +1579,7 @@ function OpenTuiRuntime(props: {
     }
     const value = prompt.trim();
     if (!value) {
-      appendLocal(transcript, publishTranscript, "Usage: /goal <final goal>");
+      appendLocal(transcript, publishTranscript, "Usage: /goal <objective>");
       return;
     }
     const nextRunId = createFreshRunId();
@@ -1597,7 +1594,6 @@ function OpenTuiRuntime(props: {
       goalOrInstruction: value,
       operatorIntervention: false,
       goalMode: true,
-      resetSupercodexState: true,
       authManager: props.authManager,
       appServerOptions: props.appServerOptions,
       transcript,
@@ -2220,8 +2216,6 @@ function startSupervisor(input: {
   goalOrInstruction: string;
   operatorIntervention: boolean;
   goalMode?: boolean;
-  skipScaffold?: boolean;
-  resetSupercodexState?: boolean;
   authManager: CodexAuthManager;
   appServerOptions: AppServerOptions;
   transcript: TuiTranscriptSource;
@@ -2233,8 +2227,6 @@ function startSupervisor(input: {
     ...defaultSupervisorConfig(input.project),
     goal: input.operatorIntervention ? "" : input.goalOrInstruction,
     goalMode: Boolean(input.goalMode),
-    skipScaffold: Boolean(input.skipScaffold),
-    resetSupercodexState: Boolean(input.resetSupercodexState),
     runId: input.runId,
     authManager: input.authManager,
     operatorIntervention: input.operatorIntervention,

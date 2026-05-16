@@ -77,7 +77,7 @@ async function runLineAttach(options: AttachOptions): Promise<number> {
   console.log(`run: ${activeRunId}`);
   console.log(
     options.managed
-      ? "Type a message, /goal <prompt> to reset FINAL_GOAL, or /start [run-id] to resume. Type /help for commands."
+      ? "Type a message, /goal <prompt> to start app-server goal mode, or /start [run-id] to resume. Type /help for commands."
       : "Type /help for commands. Plain text is sent as a Codex steering message.",
   );
   printSlashHelp();
@@ -115,7 +115,7 @@ async function runLineAttach(options: AttachOptions): Promise<number> {
             continue;
           }
           if (!goalRequest.trim()) {
-            console.log("Usage: /goal <final goal>");
+            console.log("Usage: /goal <objective>");
             continue;
           }
           activeRunId = createFreshRunId();
@@ -130,7 +130,6 @@ async function runLineAttach(options: AttachOptions): Promise<number> {
             goalOrInstruction: goalRequest,
             operatorIntervention: false,
             goalMode: true,
-            resetSupercodexState: true,
             authManager: options.authManager,
             appServerOptions: options.appServerOptions ?? defaultAppServerOptions,
             current: supervisorPromise,
@@ -167,7 +166,6 @@ async function runLineAttach(options: AttachOptions): Promise<number> {
             runId: activeRunId,
             goalOrInstruction: newRequest,
             operatorIntervention: true,
-            skipScaffold: true,
             authManager: options.authManager,
             appServerOptions: options.appServerOptions ?? defaultAppServerOptions,
             current: supervisorPromise,
@@ -263,7 +261,6 @@ async function runLineAttach(options: AttachOptions): Promise<number> {
               runId: activeRunId,
               goalOrInstruction: line.trim(),
               operatorIntervention: true,
-              skipScaffold: true,
               authManager: options.authManager,
               appServerOptions: options.appServerOptions ?? defaultAppServerOptions,
               current: supervisorPromise,
@@ -285,7 +282,6 @@ async function runLineAttach(options: AttachOptions): Promise<number> {
               runId: activeRunId,
               goalOrInstruction: "",
               operatorIntervention: true,
-              skipScaffold: true,
               authManager: options.authManager,
               appServerOptions: options.appServerOptions ?? defaultAppServerOptions,
               current: supervisorPromise,
@@ -320,8 +316,6 @@ async function startManagedSupervisor(input: {
   current: Promise<number> | null;
   operatorIntervention?: boolean;
   goalMode?: boolean;
-  skipScaffold?: boolean;
-  resetSupercodexState?: boolean;
   report?: (message: string) => void;
 }): Promise<{ task: Promise<number> | null }> {
   const report = input.report ?? ((message: string) => console.log(message));
@@ -340,15 +334,13 @@ async function startManagedSupervisor(input: {
     ...defaultSupervisorConfig(input.project),
     goal: input.operatorIntervention ? "" : instruction,
     goalMode: Boolean(input.goalMode),
-    skipScaffold: Boolean(input.skipScaffold),
-    resetSupercodexState: Boolean(input.resetSupercodexState),
     runId: input.runId,
     authManager: input.authManager,
     operatorIntervention: Boolean(input.operatorIntervention),
     appServerOptions: { ...input.appServerOptions, streamConsole: false },
     supervisorConsole: false,
   };
-  report(input.resetSupercodexState ? `[supercodex] resetting goal state and starting run ${input.runId}.` : input.operatorIntervention ? `[supercodex] starting fresh session ${input.runId}.` : `[supercodex] starting/resuming run ${input.runId}.`);
+  report(input.operatorIntervention ? `[supercodex] starting fresh session ${input.runId}.` : `[supercodex] starting/resuming run ${input.runId}.`);
   const promise = (async () => {
     try {
       const code = await new Supervisor(config).run();
@@ -467,7 +459,7 @@ class TerminalTui {
     await this.refreshStatus();
     this.enterScreen();
     await this.pollLogs();
-    this.addLog(this.options.managed ? "Managed TUI ready. Type a message, /goal <prompt> to reset FINAL_GOAL, or /start [run-id] to resume. Type / for commands." : "Attach-only TUI ready. Type / for commands or plain text to steer.");
+    this.addLog(this.options.managed ? "Managed TUI ready. Type a message, /goal <prompt> to start app-server goal mode, or /start [run-id] to resume. Type / for commands." : "Attach-only TUI ready. Type / for commands or plain text to steer.");
     this.startPolling();
     this.render();
 
@@ -896,7 +888,6 @@ class TerminalTui {
             runId: this.activeRunId,
             goalOrInstruction: line,
             operatorIntervention: true,
-            skipScaffold: true,
             authManager: this.options.authManager,
             appServerOptions: this.options.appServerOptions ?? defaultAppServerOptions,
             current: this.supervisorPromise,
@@ -923,7 +914,6 @@ class TerminalTui {
             runId: this.activeRunId,
             goalOrInstruction: "",
             operatorIntervention: true,
-            skipScaffold: true,
             authManager: this.options.authManager,
             appServerOptions: this.options.appServerOptions ?? defaultAppServerOptions,
             current: this.supervisorPromise,
@@ -989,7 +979,6 @@ class TerminalTui {
       runId: this.activeRunId,
       goalOrInstruction: value,
       operatorIntervention: true,
-      skipScaffold: true,
       authManager: this.options.authManager,
       appServerOptions: this.options.appServerOptions ?? defaultAppServerOptions,
       current: this.supervisorPromise,
@@ -1009,7 +998,7 @@ class TerminalTui {
 
   private async startGoalSession(prompt: string): Promise<void> {
     if (!this.options.managed) {
-      this.addLog("Attach mode cannot start a final-goal run. Use `supercodex` or `supercodex tui` for managed mode.");
+      this.addLog("Attach mode cannot start goal mode. Use `supercodex` or `supercodex tui` for managed mode.");
       return;
     }
     if (this.supervisorPromise) {
@@ -1018,7 +1007,7 @@ class TerminalTui {
     }
     const value = prompt.trim();
     if (!value) {
-      this.addLog("Usage: /goal <final goal>");
+      this.addLog("Usage: /goal <objective>");
       return;
     }
     this.switchActiveRun(createFreshRunId(), "fresh");
@@ -1030,7 +1019,6 @@ class TerminalTui {
       goalOrInstruction: value,
       operatorIntervention: false,
       goalMode: true,
-      resetSupercodexState: true,
       authManager: this.options.authManager,
       appServerOptions: this.options.appServerOptions ?? defaultAppServerOptions,
       current: this.supervisorPromise,
@@ -1407,7 +1395,7 @@ export async function handleAttachInput(
       console.log("This TUI is attach-only. Use `supercodex` or `supercodex tui` to create a new managed session with /new.");
       return false;
     case "goal":
-      console.log("This TUI is attach-only. Use `supercodex` or `supercodex tui` to reset state with /goal.");
+      console.log("This TUI is attach-only. Use `supercodex` or `supercodex tui` to start goal mode with /goal.");
       return false;
     case "model":
       if (!arg) {

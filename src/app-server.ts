@@ -392,14 +392,30 @@ export class AppServerRunner {
         input.runId,
       );
 
-      const turnResponse = await client.request("turn/start", {
+      const turnStartInput = await this.turnStartInputForThread(client, {
         threadId: activeThreadId,
-        input: [{ type: "text", text: input.prompt, text_elements: [] }],
+        prompt: input.prompt,
+        resume: Boolean(input.resume),
       });
-      const turn = isPlainObject(turnResponse.turn) ? turnResponse.turn : {};
-      activeTurnId = typeof turn.id === "string" ? turn.id : null;
+      if (turnStartInput.length === 0) {
+        const resumedGoalTurnId = await this.waitForGoalContinuationTurn(client, activeThreadId);
+        if (resumedGoalTurnId) {
+          activeTurnId = resumedGoalTurnId;
+          if (this.options.streamConsole) {
+            console.log(`[supercodex] detected auto-resumed goal turn ${activeTurnId}; attaching without extra turn/start.`);
+          }
+        }
+      }
       if (!activeTurnId) {
-        throw new Error("app-server did not return a turn id");
+        const turnResponse = await client.request("turn/start", {
+          threadId: activeThreadId,
+          input: turnStartInput,
+        });
+        const turn = isPlainObject(turnResponse.turn) ? turnResponse.turn : {};
+        activeTurnId = typeof turn.id === "string" ? turn.id : null;
+        if (!activeTurnId) {
+          throw new Error("app-server did not return a turn id");
+        }
       }
       await saveSupervisorRuntime(
         project,
@@ -440,14 +456,13 @@ export class AppServerRunner {
         classification = "operator_interrupt";
         returnCode = 130;
       } else {
-        classification = classifyAppServerFailure(completedTurn.error ?? completion);
+        classification = this.classifyFailureWithDiagnostics(completedTurn.error ?? completion, client.stderrText());
         returnCode = 1;
       }
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error);
       await appendLog(stderrPath, `${text}\n`).catch(() => undefined);
-      const diagnosticText = `${text}\n${client.stderrText()}`;
-      classification = classifyAppServerFailure(diagnosticText);
+      classification = this.classifyFailureWithDiagnostics(text, client.stderrText());
       if (this.options.streamConsole) {
         console.error(`[supercodex] app-server error: ${text}`);
       }
@@ -511,6 +526,107 @@ export class AppServerRunner {
     };
   }
 
+  private async turnStartInputForThread(
+    client: Pick<AppServerClient, "request">,
+    input: { threadId: string; prompt: string; resume: boolean },
+  ): Promise<JsonObject[]> {
+    const prompt = input.prompt.trim();
+    const fallback = textTurnInput(prompt);
+    const requestedGoalObjective = parseGoalObjectiveFromPrompt(prompt);
+    if (!input.resume || requestedGoalObjective === null) {
+      return fallback;
+    }
+
+    try {
+      const goal = await this.readThreadGoal(client, input.threadId);
+      if (!goal) {
+        return fallback;
+      }
+      if (goal.status === "complete") {
+        return fallback;
+      }
+      if (
+        requestedGoalObjective.trim() &&
+        goal.objective?.trim() &&
+        goal.objective.trim() !== requestedGoalObjective.trim()
+      ) {
+        return fallback;
+      }
+
+      if (goal.status === "paused" || goal.status === "budgetLimited") {
+        const activated = await this.setThreadGoalActive(client, input.threadId);
+        if (!activated) {
+          return fallback;
+        }
+      }
+
+      if (this.options.streamConsole) {
+        console.log(`[supercodex] resumed thread goal state via thread/goal/get; continuing without replaying /goal prompt.`);
+      }
+      return [];
+    } catch (error) {
+      if (this.options.streamConsole) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.log(`[supercodex] goal-state resume fallback to /goal prompt replay: ${message}`);
+      }
+      return fallback;
+    }
+  }
+
+  private async readThreadGoal(
+    client: Pick<AppServerClient, "request">,
+    threadId: string,
+  ): Promise<{ objective?: string; status?: string; threadId?: string } | null> {
+    const response = await client.request("thread/goal/get", { threadId });
+    return parseThreadGoalPayload(response);
+  }
+
+  private async setThreadGoalActive(client: Pick<AppServerClient, "request">, threadId: string): Promise<boolean> {
+    try {
+      await client.request("thread/goal/set", { threadId, status: "active" });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async waitForGoalContinuationTurn(
+    client: Pick<AppServerClient, "request">,
+    threadId: string,
+    timeoutMs = 2000,
+    intervalMs = 200,
+  ): Promise<string | null> {
+    const deadline = Date.now() + Math.max(0, timeoutMs);
+    while (Date.now() <= deadline) {
+      const turnId = await this.readInProgressTurnId(client, threadId);
+      if (turnId) {
+        return turnId;
+      }
+      if (Date.now() >= deadline) {
+        break;
+      }
+      await sleep(intervalMs);
+    }
+    return null;
+  }
+
+  private async readInProgressTurnId(client: Pick<AppServerClient, "request">, threadId: string): Promise<string | null> {
+    try {
+      const response = await client.request("thread/read", { threadId, includeTurns: true });
+      const thread = isPlainObject(response.thread) ? response.thread : null;
+      const turns = Array.isArray(thread?.turns) ? thread.turns : [];
+      for (let index = turns.length - 1; index >= 0; index--) {
+        const turn = isPlainObject(turns[index]) ? turns[index] : null;
+        if (turn?.status === "inProgress" && typeof turn.id === "string" && turn.id.trim()) {
+          return turn.id;
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
   private async waitForTurnCompletion(input: {
     client: AppServerClient;
     project: string;
@@ -532,6 +648,19 @@ export class AppServerRunner {
       }
     });
     while (!completed) {
+      const usageLimitDuringCompaction = detectUsageLimitDuringCompaction(input.client.stderrText());
+      if (usageLimitDuringCompaction) {
+        await input.client.request("turn/interrupt", { threadId: input.threadId, turnId: input.turnId }).catch(() => ({}));
+        return {
+          turn: {
+            id: input.turnId,
+            status: "failed",
+            error: {
+              message: usageLimitDuringCompaction,
+            },
+          },
+        };
+      }
       const interactionResponses = await readInteractionResponses(input.project, input.runId);
       for (const response of interactionResponses) {
         input.client.respond(response.requestId, response.response);
@@ -628,6 +757,14 @@ export class AppServerRunner {
     }
     return completed;
   }
+
+  private classifyFailureWithDiagnostics(primary: unknown, stderrText: string): string {
+    const diagnostics = stderrText.trim();
+    if (!diagnostics) {
+      return classifyAppServerFailure(primary);
+    }
+    return classifyAppServerFailure({ primary, stderr: diagnostics });
+  }
 }
 
 export function classifyAppServerFailure(value: unknown): string {
@@ -672,6 +809,14 @@ export function classifyAppServerFailure(value: unknown): string {
     text.includes("compact_remote") ||
     text.includes("/responses/compact")
   ) {
+    const hasCompactionWindowTelemetry =
+      text.includes("model_context_window_tokens") &&
+      (text.includes("all_history_items_model_visible_bytes") ||
+        text.includes("failing_compaction_request_model_visible_bytes") ||
+        text.includes("estimated_tokens_of_items_added_since_last_successful_api_response"));
+    if (hasCompactionWindowTelemetry) {
+      return "context_window_exceeded";
+    }
     return "remote_compaction_failed";
   }
   if (
@@ -723,17 +868,88 @@ export function resolveCodexInvocation(codexBin: string): { command: string; arg
 }
 
 function extractCodexErrorCode(value: unknown): string | null {
+  return extractCodexErrorCodeDeep(value, new Set<object>());
+}
+
+function extractCodexErrorCodeDeep(value: unknown, seen: Set<object>): string | null {
   if (!isPlainObject(value)) {
     return null;
   }
+  if (seen.has(value)) {
+    return null;
+  }
+  seen.add(value);
   const info = value.codexErrorInfo ?? (isPlainObject(value.error) ? value.error.codexErrorInfo : null);
   if (typeof info === "string") {
     return info;
   }
   if (isPlainObject(info)) {
-    return Object.keys(info)[0] ?? null;
+    const key = Object.keys(info)[0];
+    if (typeof key === "string" && key.trim()) {
+      return key;
+    }
+  }
+  for (const nestedKey of ["primary", "error", "turn", "params", "response", "details"] as const) {
+    const nested = value[nestedKey];
+    const code = extractCodexErrorCodeDeep(nested, seen);
+    if (code) {
+      return code;
+    }
   }
   return null;
+}
+
+function parseGoalObjectiveFromPrompt(prompt: string): string | null {
+  const match = prompt.match(/^\/goal(?:\s+([\s\S]*))?$/);
+  if (!match) {
+    return null;
+  }
+  return (match[1] ?? "").trim();
+}
+
+function detectUsageLimitDuringCompaction(stderrText: string): string | null {
+  const text = stderrText.trim();
+  if (!text) {
+    return null;
+  }
+  const lower = text.toLowerCase();
+  const hasUsageLimitSignal =
+    lower.includes("usagelimitexceeded") || lower.includes("usage limit") || lower.includes("codex/settings/usage");
+  if (!hasUsageLimitSignal) {
+    return null;
+  }
+  const hasCompactionSignal =
+    lower.includes("pre-sampling compact") ||
+    lower.includes("remote compact task") ||
+    lower.includes("remote compaction failed") ||
+    lower.includes("compact_remote");
+  if (!hasCompactionSignal) {
+    return null;
+  }
+  return "Codex reported usage limit during pre-sampling compaction. Switch auth and continue with a resumed thread.";
+}
+
+function textTurnInput(text: string): JsonObject[] {
+  if (!text.trim()) {
+    return [];
+  }
+  return [{ type: "text", text, text_elements: [] }];
+}
+
+function parseThreadGoalPayload(value: JsonObject): { objective?: string; status?: string; threadId?: string } | null {
+  const candidate =
+    (isPlainObject(value.goal) ? value.goal : null) ??
+    (isPlainObject(value.threadGoal) ? value.threadGoal : null) ??
+    (isPlainObject(value.thread_goal) ? value.thread_goal : null) ??
+    (isPlainObject(value) && (typeof value.status === "string" || typeof value.objective === "string") ? value : null);
+  if (!candidate) {
+    return null;
+  }
+  return {
+    objective: typeof candidate.objective === "string" ? candidate.objective : undefined,
+    status: typeof candidate.status === "string" ? candidate.status : undefined,
+    threadId: typeof candidate.threadId === "string" ? candidate.threadId : undefined,
+  };
 }
 
 function isPlainObject(value: unknown): value is JsonObject {
